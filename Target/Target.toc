@@ -1,7 +1,0 @@
-## Interface: 90001
-## Title: Target
-## SavedVariables: Target_Settings
-## Author: Drab & Special Thanks to Hurtntime!
-## Notes: Shows class textures on targets.
-## Dependencies: 
-Target.lua
