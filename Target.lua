@@ -4,36 +4,38 @@ local addonName, addon = ...
 local defaultSettings = 
 {
     xValue = 0,
-    yValue = 0
+    yValue = 0,
+    transparent = true
 }
 
 -- Initialize your Saved Variables table
-Target_Settings = Target_Settings or CopyTable(defaultSettings)
+-- Target_Settings = Target_Settings or CopyTable(defaultSettings) -- Moved to PLAYER_LOGIN
 
--- Map class names to their corresponding texture files
-local classTextureFiles = 
-{
-    warrior     = "warrior.tga",
-    hunter      = "hunter.tga",
-    mage        = "mage.tga",
-    rogue       = "rogue.tga",
-    druid       = "druid.tga",
-    paladin     = "paladin.tga",
-    shaman      = "shaman.tga",
-    priest      = "priest.tga",
-    deathknight = "deathknight.tga",
-    warlock     = "warlock.tga",
-    monk        = "monk.tga",
-    demonhunter = "demonhunter.tga",
-    evoker      = "evoker.tga"
-}
+-- Auto generating the name based on class
+-- local classTextureFiles = 
+-- {
+--     warrior     = "warrior",
+--     hunter      = "hunter",
+--     mage        = "mage",
+--     rogue       = "rogue",
+--     druid       = "druid",
+--     paladin     = "paladin",
+--     shaman      = "shaman",
+--     priest      = "priest",
+--     deathknight = "deathknight",
+--     warlock     = "warlock",
+--     monk        = "monk",
+--     demonhunter = "demonhunter",
+--     evoker      = "evoker"
+-- }
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
+frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
-local function createPlayer(unitId)
+function createPlayer(unitId)
     local player = nil
 
     if UnitExists(unitId) then
@@ -45,15 +47,19 @@ local function createPlayer(unitId)
         if player.class then
             player.class = player.class:lower()
         end
+
+        -- auto generate class image based on class name and transparency user setting.
+        local classImage = player.class .. (Target_Settings.transparent and "-circle" or "") .. ".tga"
+
         player.texture  = frame:CreateTexture(player.guid .. "-Texture", "OVERLAY")
-        player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classTextureFiles[player.class])
+        player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
         player.texture:SetSize(32, 32)
     end
 
     return player
 end
 
-local function clearPlayers(players)
+function clearPlayers(players)
     -- clear out existing player textures
     if players then
         for unitId, player in pairs(players) do
@@ -68,29 +74,37 @@ end
 
 local players = {}
 
-local function OnEvent(self, event, ...)
+function initializePlayers()
+    -- recreate roster
+    clearPlayers(players)
+
+    players["player"] = createPlayer("player")
+    players["party1"] = createPlayer("party1")
+    players["party2"] = createPlayer("party2")
+    players["party3"] = createPlayer("party3")
+    players["party4"] = createPlayer("party4")
+end
+
+function OnEvent(self, event, ...)
     local arg1 = ...
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
-        -- recreate roster
-        clearPlayers(players)
-
-        players["player"] = createPlayer("player")
-        players["party1"] = createPlayer("party1")
-        players["party2"] = createPlayer("party2")
-        players["party3"] = createPlayer("party3")
-        players["party4"] = createPlayer("party4")
-        
+        initializePlayers()
     elseif event == "ADDON_LOADED" and arg1 == addonName then
+    elseif event == "PLAYER_LOGIN" then
         -- Load the saved settings
-        Target_Settings = Target_Settings or CopyTable(defaultSettings)
-        addon.xSlider:SetValue(Target_Settings.xValue)
-        addon.ySlider:SetValue(Target_Settings.yValue)
+        if not Target_Settings then
+            Target_Settings = CopyTable(defaultSettings)
+        end
+
+        initializeUI()
+        -- Initial call to updateNamePlates
+        updateNamePlates()
     end
 end
 
 frame:SetScript("OnEvent", OnEvent)
 
-local function getTargetCount(unitGuid)
+function getTargetCount(unitGuid)
     local count = 0
     for unitId, player in pairs(players) do
         if unitGuid == UnitGUID(player.targetId) then
@@ -111,7 +125,8 @@ function updateNamePlates(self)
 
     local currentCounts = {}
     for unitId, player in pairs(players) do
-        if UnitExists(unitId) and UnitExists(player.targetId) then
+        -- target is showing on personal resource bar if i target myself :)
+        if UnitExists(unitId) and UnitExists(player.targetId) and not UnitIsUnit("target", "player") then
             local nameplate = C_NamePlate.GetNamePlateForUnit(player.targetId)
             if nameplate and player.texture then
                 local targetGUID  = UnitGUID(player.targetId)
@@ -148,44 +163,59 @@ function updateNamePlates(self)
     C_Timer.After(0.2, updateNamePlates)
 end
 
--- Create a frame for options
-addon.optionsFrame = CreateFrame("Frame", nil, InterfaceOptionsFramePanelContainer)
-addon.optionsFrame.name = addonName
-InterfaceOptions_AddCategory(addon.optionsFrame)
+function initializeUI()
+    -- Create a frame for options
+    addon.optionsFrame = CreateFrame("Frame", nil, InterfaceOptionsFramePanelContainer)
+    addon.optionsFrame.name = addonName
+    InterfaceOptions_AddCategory(addon.optionsFrame)
 
--- Create X slider
-addon.xSlider = CreateFrame("Slider", "TargetXSlider", addon.optionsFrame, "OptionsSliderTemplate")
-addon.xSlider:SetPoint("TOP", addon.optionsFrame, "TOP", 0, -20)
-addon.xSlider:SetMinMaxValues(-200, 200)
-addon.xSlider:SetValue(Target_Settings.xValue)
-addon.xSlider:SetValueStep(1)
-addon.xSlider:SetObeyStepOnDrag(true)
-addon.xSlider:SetWidth(200)
-addon.xSlider:SetScript("OnValueChanged", function(self, value)
-    _G[self:GetName() .. 'Text']:SetText("X Offset: " .. floor(value))
-    Target_Settings.xValue = value
-end)
-addon.xSlider:Show()
+    -- Create X slider
+    addon.xSlider = CreateFrame("Slider", "TargetXSlider", addon.optionsFrame, "OptionsSliderTemplate")
+    addon.xSlider:SetPoint("TOP", addon.optionsFrame, "TOP", 0, -20)
+    addon.xSlider:SetMinMaxValues(-200, 200)
+    addon.xSlider:SetValue(Target_Settings.xValue)
+    addon.xSlider:SetValueStep(1)
+    addon.xSlider:SetObeyStepOnDrag(true)
+    addon.xSlider:SetWidth(200)
+    addon.xSlider:SetScript("OnValueChanged", function(self, value)
+        _G[self:GetName() .. 'Text']:SetText("X Offset: " .. floor(value))
+        Target_Settings.xValue = value
+    end)
+    addon.xSlider:Show()
 
--- Create Y slider
-addon.ySlider = CreateFrame("Slider", "TargetYSlider", addon.optionsFrame, "OptionsSliderTemplate")
-addon.ySlider:SetPoint("TOP", addon.xSlider, "BOTTOM", 0, -20)
-addon.ySlider:SetMinMaxValues(-200, 200)
-addon.ySlider:SetValue(Target_Settings.yValue)
-addon.ySlider:SetValueStep(1)
-addon.ySlider:SetObeyStepOnDrag(true)
-addon.ySlider:SetWidth(200)
-addon.ySlider:SetScript("OnValueChanged", function(self, value)
-    _G[self:GetName() .. 'Text']:SetText("Y Offset: " .. floor(value))
-    Target_Settings.yValue = value
-end)
-addon.ySlider:Show()
+    -- Create Y slider
+    addon.ySlider = CreateFrame("Slider", "TargetYSlider", addon.optionsFrame, "OptionsSliderTemplate")
+    addon.ySlider:SetPoint("TOP", addon.xSlider, "BOTTOM", 0, -20)
+    addon.ySlider:SetMinMaxValues(-200, 200)
+    addon.ySlider:SetValue(Target_Settings.yValue)
+    addon.ySlider:SetValueStep(1)
+    addon.ySlider:SetObeyStepOnDrag(true)
+    addon.ySlider:SetWidth(200)
+    addon.ySlider:SetScript("OnValueChanged", function(self, value)
+        _G[self:GetName() .. 'Text']:SetText("Y Offset: " .. floor(value))
+        Target_Settings.yValue = value
+    end)
+    addon.ySlider:Show()
 
--- Function to show/hide the options frame
-function addon.optionsFrame:refresh()
-    local isVisible = addon.optionsFrame:IsShown()
-    addon.optionsFrame:SetShown(not isVisible)
+    -- Create transparent option
+    addon.transparentCheck = CreateFrame("CheckButton", "TargetTransparentCheckButton", addon.optionsFrame, "UICheckButtonTemplate")
+    addon.transparentCheck:SetPoint("TOP", addon.ySlider, "BOTTOM", 0, -20)
+    addon.transparentCheck.text:SetText("Transparent Background")
+    addon.transparentCheck:SetChecked(Target_Settings.transparent)
+    -- addon.transparentCheck.text.tooltip = "Swap between class color backgrounds and transparent backgrounds."
+    addon.transparentCheck:SetScript("OnClick", function(frame)
+        local checked = frame:GetChecked()
+        Target_Settings.transparent = checked
+        initializePlayers()
+        updateNamePlates()
+    end)
+    addon.transparentCheck:Show()
+
+    -- Function to show/hide the options frame
+    function addon.optionsFrame:refresh()
+        local isVisible = addon.optionsFrame:IsShown()
+        addon.optionsFrame:SetShown(not isVisible)
+    end
 end
 
--- Initial call to updateNamePlates
-updateNamePlates()
+
