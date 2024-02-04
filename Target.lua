@@ -211,11 +211,21 @@ function initializeUI()
     end)
     addon.transparentCheck:Show()
 
+    -- Create Discord link input field
+    addon.discordLinkInput = CreateFrame("EditBox", "TargetDiscordLinkInput", addon.optionsFrame, "InputBoxTemplate")
+    addon.discordLinkInput:SetPoint("TOP", addon.transparentCheck, "BOTTOM", 0, -20)
+    addon.discordLinkInput:SetSize(200, 20)
+    addon.discordLinkInput:SetText("https://discord.gg/dmwegA6Z") -- Set your Discord link here
+    addon.discordLinkInput:SetAutoFocus(false)
+    addon.discordLinkInput:SetCursorPosition(0)
+    addon.discordLinkInput:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    addon.discordLinkInput:Show()
+
     -- Function to show/hide the options frame
     function addon.optionsFrame:refresh()
         local isVisible = addon.optionsFrame:IsShown()
         addon.optionsFrame:SetShown(not isVisible)
     end
 end
-
-
