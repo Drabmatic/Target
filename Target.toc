@@ -1,6 +1,6 @@
 ## Interface: 90001
 ## Title: Target
-## Version: v1.2
+## Version: v1.3
 ## SavedVariables: Target_Settings
 ## Author: Drab & Special Thanks to Hurtntime & NRV!
 ## Notes: Shows class textures on targets.
