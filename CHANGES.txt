@@ -1,18 +1,16 @@
-lightweight tag 99011b993174cbe95f08b374e1dea52cb2923ad9 v1.4
+lightweight tag ca301190e61d6da7076220e86a782042081b9956 v1.4
 Author:	Drabmatic <157862756+Drabmatic@users.noreply.github.com>
-Date:	Sun Feb 4 16:31:20 2024 -0500
+Date:	Wed Feb 7 20:57:39 2024 -0500
 
-commit 99011b993174cbe95f08b374e1dea52cb2923ad9
+commit ca301190e61d6da7076220e86a782042081b9956
 Author: Drabmatic <157862756+Drabmatic@users.noreply.github.com>
-Date:   Sun Feb 4 16:31:20 2024 -0500
+Date:   Wed Feb 7 20:57:39 2024 -0500
 
-    Update Target.toc
+            Added option for class color icons      Added different sizes for the icons     Added input fields for x & y
     
-    Added discord link in settings.
-
-	Added option for class color icons
-
-	Added different sizes for the icons
-
-	Added input fields for x & y
+    Added option for class color icons
+    
+    Added different sizes for the icons
+    
+    Added input fields for x & y
 

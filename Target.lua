@@ -5,9 +5,14 @@ local defaultSettings =
 {
     xValue = 0,
     yValue = 0,
-    transparent = true,
-    useClassColor = false,
-    iconSize = "default" -- default icon size preset
+    iconType = "default", -- default icon type
+    iconSize = "default" -- default icon size
+}
+
+local iconTypes = {
+    default = {suffix = "", useClassColor = false},
+    circle = {suffix = "-circle", useClassColor = false},
+    classColor = {suffix = "-color", useClassColor = true}
 }
 
 local presetSizes = {
@@ -37,21 +42,18 @@ function createPlayer(unitId)
             player.class = player.class:lower()
         end
 
-        local classImage
-        if Target_Settings.useClassColor then
-            classImage = player.class .. "-color" .. (Target_Settings.transparent and "-circle" or "") .. ".tga"
-        else
-            classImage = player.class .. (Target_Settings.transparent and "-circle" or "") .. ".tga"
-        end
+        local iconType = iconTypes[Target_Settings.iconType] or iconTypes["default"]
+        local classImage = player.class .. iconType.suffix .. ".tga"
 
         player.texture  = frame:CreateTexture(player.guid .. "-Texture", "OVERLAY")
-        local iconSize = presetSizes[Target_Settings.iconSize] or presetSizes["default"] -- fallback to default if preset not found
+        local iconSize = Target_Settings.iconSize or 32
         player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
-        player.texture:SetSize(iconSize.width, iconSize.height)
+        player.texture:SetSize(iconSize, iconSize)  -- Update icon size here
     end
 
     return player
 end
+
 
 function clearPlayers(players)
     if players then
@@ -153,6 +155,7 @@ function initializeUI()
     addon.optionsFrame.name = addonName
     InterfaceOptions_AddCategory(addon.optionsFrame)
 
+    -- X Offset Slider
     addon.xSlider = CreateFrame("Slider", "TargetXSlider", addon.optionsFrame, "OptionsSliderTemplate")
     addon.xSlider:SetPoint("TOP", addon.optionsFrame, "TOP", 0, -20)
     addon.xSlider:SetMinMaxValues(-200, 200)
@@ -169,6 +172,13 @@ function initializeUI()
     end)
     addon.xSlider:Show()
 
+    -- X Offset Label
+    addon.xLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    addon.xLabel:SetPoint("TOPLEFT", addon.xSlider, "BOTTOMLEFT", 0, -5)
+    addon.xLabel:SetText("X Offset")
+    addon.xLabel:Show()
+
+    -- X Offset Input Box
     addon.xInput = CreateFrame("EditBox", "TargetXInput", addon.optionsFrame, "InputBoxTemplate")
     addon.xInput:SetPoint("TOP", addon.xSlider, "BOTTOM", 0, -5)
     addon.xInput:SetSize(80, 20)
@@ -184,6 +194,7 @@ function initializeUI()
     end)
     addon.xInput:Show()
 
+    -- Y Offset Slider
     addon.ySlider = CreateFrame("Slider", "TargetYSlider", addon.optionsFrame, "OptionsSliderTemplate")
     addon.ySlider:SetPoint("TOP", addon.xInput, "BOTTOM", 0, -20)
     addon.ySlider:SetMinMaxValues(-200, 200)
@@ -200,6 +211,13 @@ function initializeUI()
     end)
     addon.ySlider:Show()
 
+    -- Y Offset Label
+    addon.yLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    addon.yLabel:SetPoint("TOPLEFT", addon.ySlider, "BOTTOMLEFT", 0, -5)
+    addon.yLabel:SetText("Y Offset")
+    addon.yLabel:Show()
+
+    -- Y Offset Input Box
     addon.yInput = CreateFrame("EditBox", "TargetYInput", addon.optionsFrame, "InputBoxTemplate")
     addon.yInput:SetPoint("TOP", addon.ySlider, "BOTTOM", 0, -5)
     addon.yInput:SetSize(80, 20)
@@ -215,53 +233,65 @@ function initializeUI()
     end)
     addon.yInput:Show()
 
-    addon.transparentCheck = CreateFrame("CheckButton", "TargetTransparentCheckButton", addon.optionsFrame, "UICheckButtonTemplate")
-    addon.transparentCheck:SetPoint("TOP", addon.yInput, "BOTTOM", 0, -20)
-    addon.transparentCheck.text:SetText("Transparent Background")
-    addon.transparentCheck:SetChecked(Target_Settings.transparent)
-    addon.transparentCheck:SetScript("OnClick", function(frame)
-        local checked = frame:GetChecked()
-        Target_Settings.transparent = checked
-        initializePlayers()
-        updateNamePlates()
-    end)
-    addon.transparentCheck:Show()
+    -- Icon Style Label
+    addon.iconStyleLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    addon.iconStyleLabel:SetPoint("TOPLEFT", addon.yInput, "BOTTOMLEFT", 0, -20)
+    addon.iconStyleLabel:SetText("Icon Style")
+    addon.iconStyleLabel:Show()
 
-    addon.classColorCheck = CreateFrame("CheckButton", "TargetClassColorCheckButton", addon.optionsFrame, "UICheckButtonTemplate")
-    addon.classColorCheck:SetPoint("TOP", addon.transparentCheck, "BOTTOM", 0, -20)
-    addon.classColorCheck.text:SetText("Use Class Colors")
-    addon.classColorCheck:SetChecked(Target_Settings.useClassColor)
-    addon.classColorCheck:SetScript("OnClick", function(frame)
-        local checked = frame:GetChecked()
-        Target_Settings.useClassColor = checked
-        initializePlayers()
-        updateNamePlates()
-    end)
-    addon.classColorCheck:Show()
-
-    addon.sizeDropdown = CreateFrame("Frame", "TargetSizeDropdown", addon.optionsFrame, "UIDropDownMenuTemplate")
-    addon.sizeDropdown:SetPoint("TOP", addon.classColorCheck, "BOTTOM", 0, -20)
-    addon.sizeDropdown.initialize = function(self, level)
+    -- Icon Type Dropdown Menu
+    addon.iconTypeDropdown = CreateFrame("Frame", "TargetIconTypeDropdown", addon.optionsFrame, "UIDropDownMenuTemplate")
+    addon.iconTypeDropdown:SetPoint("TOPLEFT", addon.iconStyleLabel, "BOTTOMLEFT", 0, -5)
+    addon.iconTypeDropdown.initialize = function(self, level)
         local info = UIDropDownMenu_CreateInfo()
-        for size, dimensions in pairs(presetSizes) do
-            info.text = size
+        for iconType, data in pairs(iconTypes) do
+            info.text = iconType
             info.func = function()
-                Target_Settings.iconSize = size
-                UIDropDownMenu_SetText(addon.sizeDropdown, size)
+                Target_Settings.iconType = iconType
+                UIDropDownMenu_SetText(addon.iconTypeDropdown, iconType)
                 initializePlayers()
                 updateNamePlates()
             end
             UIDropDownMenu_AddButton(info, level)
         end
     end
-    UIDropDownMenu_SetWidth(addon.sizeDropdown, 100)
-    UIDropDownMenu_SetButtonWidth(addon.sizeDropdown, 124)
-    UIDropDownMenu_JustifyText(addon.sizeDropdown, "CENTER")
-    UIDropDownMenu_SetText(addon.sizeDropdown, Target_Settings.iconSize)
-    addon.sizeDropdown:Show()
+    UIDropDownMenu_SetWidth(addon.iconTypeDropdown, 150)
+    UIDropDownMenu_SetButtonWidth(addon.iconTypeDropdown, 174)
+    UIDropDownMenu_JustifyText(addon.iconTypeDropdown, "CENTER")
+    UIDropDownMenu_SetText(addon.iconTypeDropdown, Target_Settings.iconType)
+    addon.iconTypeDropdown:Show()
 
+    -- Icon Size Slider
+    addon.iconSizeSlider = CreateFrame("Slider", "TargetIconSizeSlider", addon.optionsFrame, "OptionsSliderTemplate")
+    addon.iconSizeSlider:SetPoint("TOPLEFT", addon.iconTypeDropdown, "BOTTOMLEFT", 0, -20)
+    addon.iconSizeSlider:SetMinMaxValues(1, 100)
+    addon.iconSizeSlider:SetValue(tonumber(Target_Settings.iconSize) or 32)
+    addon.iconSizeSlider:SetValueStep(1)
+    addon.iconSizeSlider:SetObeyStepOnDrag(true)
+    addon.iconSizeSlider:SetWidth(200)
+    addon.iconSizeSlider:SetScript("OnValueChanged", function(self, value)
+        _G[self:GetName() .. 'Text']:SetText("Icon Size: " .. floor(value))
+        Target_Settings.iconSize = value
+        initializePlayers()
+        updateNamePlates()
+    end)
+    addon.iconSizeSlider:Show()
+
+    -- Icon Size Label
+    addon.iconSizeLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    addon.iconSizeLabel:SetPoint("TOPLEFT", addon.iconSizeSlider, "BOTTOMLEFT", 0, -5)
+    addon.iconSizeLabel:SetText("Icon Size")
+    addon.iconSizeLabel:Show()
+
+    -- Discord Link Label
+    addon.discordLinkLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    addon.discordLinkLabel:SetPoint("TOPLEFT", addon.iconSizeLabel, "BOTTOMLEFT", 0, -20)
+    addon.discordLinkLabel:SetText("Discord Link")
+    addon.discordLinkLabel:Show()
+
+    -- Discord Link Input Box
     addon.discordLinkInput = CreateFrame("EditBox", "TargetDiscordLinkInput", addon.optionsFrame, "InputBoxTemplate")
-    addon.discordLinkInput:SetPoint("TOP", addon.sizeDropdown, "BOTTOM", 0, -20)
+    addon.discordLinkInput:SetPoint("TOPLEFT", addon.discordLinkLabel, "BOTTOMLEFT", 0, -5)
     addon.discordLinkInput:SetSize(200, 20)
     addon.discordLinkInput:SetText("https://discord.gg/dmwegA6Z")
     addon.discordLinkInput:SetAutoFocus(false)
