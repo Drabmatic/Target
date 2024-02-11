@@ -1,16 +1,10 @@
-lightweight tag ca301190e61d6da7076220e86a782042081b9956 v1.4.1
+lightweight tag 6ee97ec029e4b38dfe9fe65cab87842272dda5ee v1.5
 Author:	Drabmatic <157862756+Drabmatic@users.noreply.github.com>
-Date:	Wed Feb 7 20:57:39 2024 -0500
+Date:	Thu Feb 8 22:20:09 2024 -0500
 
-commit ca301190e61d6da7076220e86a782042081b9956
+commit 6ee97ec029e4b38dfe9fe65cab87842272dda5ee
 Author: Drabmatic <157862756+Drabmatic@users.noreply.github.com>
-Date:   Wed Feb 7 20:57:39 2024 -0500
+Date:   Thu Feb 8 22:20:09 2024 -0500
 
-            Added option for class color icons      Added different sizes for the icons     Added input fields for x & y
-    
-    Added option for class color icons
-    
-    Added different sizes for the icons
-    
-    Added input fields for x & y
+    Update CHANGES.txt
 
