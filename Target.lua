@@ -37,11 +37,9 @@ function createPlayer(unitId)
 
     player.unitId = unitId
     player.targetId = unitId .. "target"
-    player.guid = UnitGUID(unitId)
-    player.class = select(2, UnitClass(unitId))
-    if player.class then
-        player.class = player.class:lower()
-    end
+    player.guid = UnitGUID(unitId) or "" -- Assign an empty string if GUID is nil
+    player.class = select(2, UnitClass(unitId)) or "Unknown" -- Assign a default value if class is nil
+    player.class = player.class:lower()
 
     local iconType = iconTypes[Target_Settings.iconType] or iconTypes["default"]
     local classImage = player.class .. iconType.suffix .. ".tga"
@@ -114,7 +112,7 @@ function updateNamePlates(self)
         if UnitExists(unitId) and targetIdExists and not UnitIsUnit("target", "player") then
             local nameplate = C_NamePlate.GetNamePlateForUnit(player.targetId)
             if nameplate and player.texture then
-                local targetGUID  = UnitGUID(player.targetId)
+                local targetGUID  = UnitGUID(player.targetId) or ""
                 local targetCount = getTargetCount(targetGUID)
                 local width, height = player.texture:GetSize()
                 local nameplateFrame = nameplateFrames[targetGUID]
