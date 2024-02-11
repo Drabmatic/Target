@@ -29,48 +29,39 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
+local players = {} -- Table to store player objects
+
 function createPlayer(unitId)
-    local player = nil
+    local player = players[unitId] or {} -- Reuse player objects if available
+    players[unitId] = player -- Store player object in the table
 
-    if UnitExists(unitId) then
-        player = {}
-        player.unitId   = unitId
-        player.targetId = unitId .. "target"
-        player.guid     = UnitGUID(unitId)
-        player.class    = select(2, UnitClass(unitId))
-        if player.class then
-            player.class = player.class:lower()
-        end
-
-        local iconType = iconTypes[Target_Settings.iconType] or iconTypes["default"]
-        local classImage = player.class .. iconType.suffix .. ".tga"
-
-        player.texture  = frame:CreateTexture(player.guid .. "-Texture", "OVERLAY")
-        local iconSize = Target_Settings.iconSize or 32
-        player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
-        player.texture:SetSize(iconSize, iconSize)  -- Update icon size here
+    player.unitId = unitId
+    player.targetId = unitId .. "target"
+    player.guid = UnitGUID(unitId)
+    player.class = select(2, UnitClass(unitId))
+    if player.class then
+        player.class = player.class:lower()
     end
+
+    local iconType = iconTypes[Target_Settings.iconType] or iconTypes["default"]
+    local classImage = player.class .. iconType.suffix .. ".tga"
+
+    if not player.texture then
+        player.texture = frame:CreateTexture(player.guid .. "-Texture", "OVERLAY")
+    end
+    local iconSize = Target_Settings.iconSize or 32
+    player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
+    player.texture:SetSize(iconSize, iconSize)
 
     return player
 end
 
-
-function clearPlayers(players)
-    if players then
-        for unitId, player in pairs(players) do
-            if player.texture then
-                player.texture:Hide()
-                player.texture = nil
-            end
-        end
-    end
-    players = {}
+function clearPlayers()
+    wipe(players) -- Directly clear the table
 end
 
-local players = {}
-
 function initializePlayers()
-    clearPlayers(players)
+    clearPlayers()
 
     players["player"] = createPlayer("player")
     players["party1"] = createPlayer("party1")
@@ -115,33 +106,31 @@ function updateNamePlates(self)
     end
 
     local currentCounts = {}
+    local xOffset = Target_Settings.xValue
+    local yOffset = Target_Settings.yValue
+
     for unitId, player in pairs(players) do
-        if UnitExists(unitId) and UnitExists(player.targetId) and not UnitIsUnit("target", "player") then
+        local targetIdExists = UnitExists(player.targetId)
+        if UnitExists(unitId) and targetIdExists and not UnitIsUnit("target", "player") then
             local nameplate = C_NamePlate.GetNamePlateForUnit(player.targetId)
             if nameplate and player.texture then
                 local targetGUID  = UnitGUID(player.targetId)
                 local targetCount = getTargetCount(targetGUID)
-
                 local width, height = player.texture:GetSize()
-                if not nameplateFrames[targetGUID] then
-                    nameplateFrames[targetGUID] = CreateFrame("Frame", nil, nameplate)
+                local nameplateFrame = nameplateFrames[targetGUID]
 
-                    local xOffset = Target_Settings.xValue
-                    local yOffset = Target_Settings.yValue
-    
-                    nameplateFrames[targetGUID]:SetSize(width * targetCount, height)
-                    nameplateFrames[targetGUID]:SetPoint("BOTTOM", nameplate, "TOP", xOffset, yOffset)
-                    nameplateFrames[targetGUID]:Show()
+                if not nameplateFrame then
+                    nameplateFrame = CreateFrame("Frame", nil, nameplate)
+                    nameplateFrames[targetGUID] = nameplateFrame
+                    nameplateFrame:SetSize(width * targetCount, height)
+                    nameplateFrame:SetPoint("BOTTOM", nameplate, "TOP", xOffset, yOffset)
+                    nameplateFrame:Show()
                 end
 
-                if currentCounts[targetGUID] then
-                    currentCounts[targetGUID] = currentCounts[targetGUID] + 1
-                else
-                    currentCounts[targetGUID] = 0
-                end
+                currentCounts[targetGUID] = (currentCounts[targetGUID] or 0) + 1
 
-                player.texture:SetParent(nameplateFrames[targetGUID])
-                player.texture:SetPoint("LEFT", nameplateFrames[targetGUID], "LEFT", currentCounts[targetGUID] * width, 0)
+                player.texture:SetParent(nameplateFrame)
+                player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", (currentCounts[targetGUID] - 1) * width, 0)
                 player.texture:Show()
             end
         end
