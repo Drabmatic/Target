@@ -8,3 +8,7 @@ Date:   Thu Feb 8 22:20:09 2024 -0500
 
     Update CHANGES.txt
 
+
+
+
+Added support to disable and enable during different situations : Open World, Arena, Battle Grounds, Raids.

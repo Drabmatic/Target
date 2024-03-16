@@ -6,7 +6,11 @@ local defaultSettings =
     xValue = 0,
     yValue = 0,
     iconType = "default", -- default icon type
-    iconSize = "default" -- default icon size
+    iconSize = "default", -- default icon size
+    enableInOpenWorld = true,
+    enableInArena = true,
+    enableInBattleground = true,
+    enableInRaid = true
 }
 
 local iconTypes = {
@@ -37,9 +41,11 @@ function createPlayer(unitId)
 
     player.unitId = unitId
     player.targetId = unitId .. "target"
-    player.guid = UnitGUID(unitId) or "" -- Assign an empty string if GUID is nil
-    player.class = select(2, UnitClass(unitId)) or "Unknown" -- Assign a default value if class is nil
-    player.class = player.class:lower()
+    player.guid = UnitGUID(unitId) or "" -- Ensure that guid is not nil
+    player.class = select(2, UnitClass(unitId)) or "" -- Ensure that class is not nil
+    if player.class then
+        player.class = player.class:lower()
+    end
 
     local iconType = iconTypes[Target_Settings.iconType] or iconTypes["default"]
     local classImage = player.class .. iconType.suffix .. ".tga"
@@ -98,6 +104,30 @@ end
 local nameplateFrames = {}
 
 function updateNamePlates(self)
+    -- Check if the addon should be enabled in the current zone
+    local function isAddonEnabled()
+        local zoneType = select(2, IsInInstance())
+        if zoneType == "none" and not Target_Settings.enableInOpenWorld then
+            return false
+        elseif zoneType == "arena" and not Target_Settings.enableInArena then
+            return false
+        elseif zoneType == "pvp" and not Target_Settings.enableInBattleground then
+            return false
+        elseif zoneType == "raid" and not Target_Settings.enableInRaid then
+            return false
+        end
+        return true
+    end
+    
+    if not isAddonEnabled() then
+        -- If the addon is not enabled in the current zone, hide nameplates and return
+        for key, value in pairs(nameplateFrames) do
+            value:Hide()
+            nameplateFrames[key] = nil
+        end
+        return
+    end
+
     for key, value in pairs(nameplateFrames) do
         value:Hide()
         nameplateFrames[key] = nil
@@ -112,7 +142,7 @@ function updateNamePlates(self)
         if UnitExists(unitId) and targetIdExists and not UnitIsUnit("target", "player") then
             local nameplate = C_NamePlate.GetNamePlateForUnit(player.targetId)
             if nameplate and player.texture then
-                local targetGUID  = UnitGUID(player.targetId) or ""
+                local targetGUID  = UnitGUID(player.targetId)
                 local targetCount = getTargetCount(targetGUID)
                 local width, height = player.texture:GetSize()
                 local nameplateFrame = nameplateFrames[targetGUID]
@@ -270,9 +300,55 @@ function initializeUI()
     addon.iconSizeLabel:SetText("Icon Size")
     addon.iconSizeLabel:Show()
 
+    -- Add options for enabling/disabling addon in different zones
+
+    -- Enable in Open World Checkbox
+    addon.enableInOpenWorldCheckbox = CreateFrame("CheckButton", "TargetEnableInOpenWorldCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
+    addon.enableInOpenWorldCheckbox:SetPoint("TOPLEFT", addon.iconSizeLabel, "BOTTOMLEFT", 0, -20)
+    addon.enableInOpenWorldCheckbox.text:SetText("Enable in Open World")
+    addon.enableInOpenWorldCheckbox:SetChecked(Target_Settings.enableInOpenWorld)
+    addon.enableInOpenWorldCheckbox:SetScript("OnClick", function(self)
+        Target_Settings.enableInOpenWorld = self:GetChecked()
+        updateNamePlates() -- Update nameplates immediately upon changing the setting
+    end)
+    addon.enableInOpenWorldCheckbox:Show()
+
+    -- Enable in Arena Checkbox
+    addon.enableInArenaCheckbox = CreateFrame("CheckButton", "TargetEnableInArenaCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
+    addon.enableInArenaCheckbox:SetPoint("TOPLEFT", addon.enableInOpenWorldCheckbox, "BOTTOMLEFT", 0, -5)
+    addon.enableInArenaCheckbox.text:SetText("Enable in Arena")
+    addon.enableInArenaCheckbox:SetChecked(Target_Settings.enableInArena)
+    addon.enableInArenaCheckbox:SetScript("OnClick", function(self)
+        Target_Settings.enableInArena = self:GetChecked()
+        updateNamePlates() -- Update nameplates immediately upon changing the setting
+    end)
+    addon.enableInArenaCheckbox:Show()
+
+    -- Enable in Battleground Checkbox
+    addon.enableInBattlegroundCheckbox = CreateFrame("CheckButton", "TargetEnableInBattlegroundCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
+    addon.enableInBattlegroundCheckbox:SetPoint("TOPLEFT", addon.enableInArenaCheckbox, "BOTTOMLEFT", 0, -5)
+    addon.enableInBattlegroundCheckbox.text:SetText("Enable in Battleground")
+    addon.enableInBattlegroundCheckbox:SetChecked(Target_Settings.enableInBattleground)
+    addon.enableInBattlegroundCheckbox:SetScript("OnClick", function(self)
+        Target_Settings.enableInBattleground = self:GetChecked()
+        updateNamePlates() -- Update nameplates immediately upon changing the setting
+    end)
+    addon.enableInBattlegroundCheckbox:Show()
+
+    -- Enable in Raid Checkbox
+    addon.enableInRaidCheckbox = CreateFrame("CheckButton", "TargetEnableInRaidCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
+    addon.enableInRaidCheckbox:SetPoint("TOPLEFT", addon.enableInBattlegroundCheckbox, "BOTTOMLEFT", 0, -5)
+    addon.enableInRaidCheckbox.text:SetText("Enable in Raid")
+    addon.enableInRaidCheckbox:SetChecked(Target_Settings.enableInRaid)
+    addon.enableInRaidCheckbox:SetScript("OnClick", function(self)
+        Target_Settings.enableInRaid = self:GetChecked()
+        updateNamePlates() -- Update nameplates immediately upon changing the setting
+    end)
+    addon.enableInRaidCheckbox:Show()
+
     -- Discord Link Label
     addon.discordLinkLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    addon.discordLinkLabel:SetPoint("TOPLEFT", addon.iconSizeLabel, "BOTTOMLEFT", 0, -20)
+    addon.discordLinkLabel:SetPoint("TOPLEFT", addon.enableInRaidCheckbox, "BOTTOMLEFT", 0, -20)
     addon.discordLinkLabel:SetText("Discord Link")
     addon.discordLinkLabel:Show()
 
