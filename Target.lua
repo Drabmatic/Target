@@ -1,12 +1,11 @@
 local addonName, addon = ...
 
 -- Default values for settings
-local defaultSettings = 
-{
+local defaultSettings = {
     xValue = 0,
     yValue = 0,
-    iconType = "default", -- default icon type
-    iconSize = "default", -- default icon size
+    iconType = "default",
+    iconSize = "default",
     enableInOpenWorld = true,
     enableInArena = true,
     enableInBattleground = true,
@@ -14,17 +13,17 @@ local defaultSettings =
 }
 
 local iconTypes = {
-    default = {suffix = "", useClassColor = false},
-    circle = {suffix = "-circle", useClassColor = false},
-    classColor = {suffix = "-color", useClassColor = true}
+    default = { suffix = "", useClassColor = false },
+    circle = { suffix = "-circle", useClassColor = false },
+    classColor = { suffix = "-color", useClassColor = true }
 }
 
 local presetSizes = {
-    small = {width = 10, height = 10},
-    medium = {width = 20, height = 20},
-    default = {width = 32, height = 32},
-    bigger = {width = 40, height = 40},
-    biggest = {width = 50, height = 50}
+    small = { width = 10, height = 10 },
+    medium = { width = 20, height = 20 },
+    default = { width = 32, height = 32 },
+    bigger = { width = 40, height = 40 },
+    biggest = { width = 50, height = 50 }
 }
 
 local frame = CreateFrame("Frame")
@@ -32,17 +31,21 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("PLAYER_TARGET_CHANGED")
+frame:RegisterEvent("UNIT_TARGET")
 
-local players = {} -- Table to store player objects
+local players = {}
+local nameplateFrames = {}
 
-function createPlayer(unitId)
-    local player = players[unitId] or {} -- Reuse player objects if available
-    players[unitId] = player -- Store player object in the table
+-- Function to create or update a player object
+local function createPlayer(unitId)
+    local player = players[unitId] or {}
+    players[unitId] = player
 
     player.unitId = unitId
     player.targetId = unitId .. "target"
-    player.guid = UnitGUID(unitId) or "" -- Ensure that guid is not nil
-    player.class = select(2, UnitClass(unitId)) or "" -- Ensure that class is not nil
+    player.guid = UnitGUID(unitId) or ""
+    player.class = select(2, UnitClass(unitId)) or ""
     if player.class then
         player.class = player.class:lower()
     end
@@ -60,11 +63,11 @@ function createPlayer(unitId)
     return player
 end
 
-function clearPlayers()
-    wipe(players) -- Directly clear the table
+local function clearPlayers()
+    wipe(players)
 end
 
-function initializePlayers()
+local function initializePlayers()
     clearPlayers()
 
     players["player"] = createPlayer("player")
@@ -74,26 +77,9 @@ function initializePlayers()
     players["party4"] = createPlayer("party4")
 end
 
-function OnEvent(self, event, ...)
-    local arg1 = ...
-    if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
-        initializePlayers()
-    elseif event == "ADDON_LOADED" and arg1 == addonName then
-    elseif event == "PLAYER_LOGIN" then
-        if not Target_Settings then
-            Target_Settings = CopyTable(defaultSettings)
-        end
-
-        initializeUI()
-        updateNamePlates()
-    end
-end
-
-frame:SetScript("OnEvent", OnEvent)
-
-function getTargetCount(unitGuid)
+local function getTargetCount(unitGuid)
     local count = 0
-    for unitId, player in pairs(players) do
+    for _, player in pairs(players) do
         if unitGuid == UnitGUID(player.targetId) then
             count = count + 1
         end
@@ -101,36 +87,27 @@ function getTargetCount(unitGuid)
     return count
 end
 
-local nameplateFrames = {}
-
-function updateNamePlates(self)
-    -- Check if the addon should be enabled in the current zone
-    local function isAddonEnabled()
-        local zoneType = select(2, IsInInstance())
-        if zoneType == "none" and not Target_Settings.enableInOpenWorld then
-            return false
-        elseif zoneType == "arena" and not Target_Settings.enableInArena then
-            return false
-        elseif zoneType == "pvp" and not Target_Settings.enableInBattleground then
-            return false
-        elseif zoneType == "raid" and not Target_Settings.enableInRaid then
-            return false
-        end
-        return true
+local function isAddonEnabled()
+    local zoneType = select(2, IsInInstance())
+    if zoneType == "none" and not Target_Settings.enableInOpenWorld then
+        return false
+    elseif zoneType == "arena" and not Target_Settings.enableInArena then
+        return false
+    elseif zoneType == "pvp" and not Target_Settings.enableInBattleground then
+        return false
+    elseif zoneType == "raid" and not Target_Settings.enableInRaid then
+        return false
     end
-    
+    return true
+end
+
+local function updateNamePlates()
     if not isAddonEnabled() then
-        -- If the addon is not enabled in the current zone, hide nameplates and return
-        for key, value in pairs(nameplateFrames) do
-            value:Hide()
-            nameplateFrames[key] = nil
+        for _, frame in pairs(nameplateFrames) do
+            frame:Hide()
         end
+        wipe(nameplateFrames)
         return
-    end
-
-    for key, value in pairs(nameplateFrames) do
-        value:Hide()
-        nameplateFrames[key] = nil
     end
 
     local currentCounts = {}
@@ -142,7 +119,7 @@ function updateNamePlates(self)
         if UnitExists(unitId) and targetIdExists and not UnitIsUnit("target", "player") then
             local nameplate = C_NamePlate.GetNamePlateForUnit(player.targetId)
             if nameplate and player.texture then
-                local targetGUID  = UnitGUID(player.targetId)
+                local targetGUID = UnitGUID(player.targetId)
                 local targetCount = getTargetCount(targetGUID)
                 local width, height = player.texture:GetSize()
                 local nameplateFrame = nameplateFrames[targetGUID]
@@ -163,9 +140,38 @@ function updateNamePlates(self)
             end
         end
     end
-
-    C_Timer.After(0.2, updateNamePlates)
 end
+
+local function clearNamePlates()
+    for _, frame in pairs(nameplateFrames) do
+        frame:Hide()
+    end
+    wipe(nameplateFrames)
+end
+
+local function OnEvent(self, event, ...)
+    if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
+        initializePlayers()
+        clearNamePlates()
+        updateNamePlates()
+    elseif event == "PLAYER_TARGET_CHANGED" or event == "UNIT_TARGET" then
+        clearNamePlates()
+        updateNamePlates()
+    elseif event == "ADDON_LOADED" and ... == addonName then
+        if not Target_Settings then
+            Target_Settings = CopyTable(defaultSettings)
+        end
+        initializeUI()
+    elseif event == "PLAYER_LOGIN" then
+        if not Target_Settings then
+            Target_Settings = CopyTable(defaultSettings)
+        end
+        initializeUI()
+        updateNamePlates()
+    end
+end
+
+frame:SetScript("OnEvent", OnEvent)
 
 function initializeUI()
     addon.optionsFrame = CreateFrame("Frame", nil, InterfaceOptionsFramePanelContainer)
@@ -300,8 +306,6 @@ function initializeUI()
     addon.iconSizeLabel:SetText("Icon Size")
     addon.iconSizeLabel:Show()
 
-    -- Add options for enabling/disabling addon in different zones
-
     -- Enable in Open World Checkbox
     addon.enableInOpenWorldCheckbox = CreateFrame("CheckButton", "TargetEnableInOpenWorldCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
     addon.enableInOpenWorldCheckbox:SetPoint("TOPLEFT", addon.iconSizeLabel, "BOTTOMLEFT", 0, -20)
@@ -309,7 +313,7 @@ function initializeUI()
     addon.enableInOpenWorldCheckbox:SetChecked(Target_Settings.enableInOpenWorld)
     addon.enableInOpenWorldCheckbox:SetScript("OnClick", function(self)
         Target_Settings.enableInOpenWorld = self:GetChecked()
-        updateNamePlates() -- Update nameplates immediately upon changing the setting
+        updateNamePlates()
     end)
     addon.enableInOpenWorldCheckbox:Show()
 
@@ -320,52 +324,52 @@ function initializeUI()
     addon.enableInArenaCheckbox:SetChecked(Target_Settings.enableInArena)
     addon.enableInArenaCheckbox:SetScript("OnClick", function(self)
         Target_Settings.enableInArena = self:GetChecked()
-        updateNamePlates() -- Update nameplates immediately upon changing the setting
+        updateNamePlates()
     end)
     addon.enableInArenaCheckbox:Show()
 
-    -- Enable in Battleground Checkbox
-    addon.enableInBattlegroundCheckbox = CreateFrame("CheckButton", "TargetEnableInBattlegroundCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
-    addon.enableInBattlegroundCheckbox:SetPoint("TOPLEFT", addon.enableInArenaCheckbox, "BOTTOMLEFT", 0, -5)
-    addon.enableInBattlegroundCheckbox.text:SetText("Enable in Battleground")
-    addon.enableInBattlegroundCheckbox:SetChecked(Target_Settings.enableInBattleground)
-    addon.enableInBattlegroundCheckbox:SetScript("OnClick", function(self)
-        Target_Settings.enableInBattleground = self:GetChecked()
-        updateNamePlates() -- Update nameplates immediately upon changing the setting
-    end)
-    addon.enableInBattlegroundCheckbox:Show()
+-- Enable in Battleground Checkbox
+addon.enableInBattlegroundCheckbox = CreateFrame("CheckButton", "TargetEnableInBattlegroundCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
+addon.enableInBattlegroundCheckbox:SetPoint("TOPLEFT", addon.enableInArenaCheckbox, "BOTTOMLEFT", 0, -5)
+addon.enableInBattlegroundCheckbox.text:SetText("Enable in Battleground")
+addon.enableInBattlegroundCheckbox:SetChecked(Target_Settings.enableInBattleground)
+addon.enableInBattlegroundCheckbox:SetScript("OnClick", function(self)
+    Target_Settings.enableInBattleground = self:GetChecked()
+    updateNamePlates()
+end)
+addon.enableInBattlegroundCheckbox:Show()
 
-    -- Enable in Raid Checkbox
-    addon.enableInRaidCheckbox = CreateFrame("CheckButton", "TargetEnableInRaidCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
-    addon.enableInRaidCheckbox:SetPoint("TOPLEFT", addon.enableInBattlegroundCheckbox, "BOTTOMLEFT", 0, -5)
-    addon.enableInRaidCheckbox.text:SetText("Enable in Raid")
-    addon.enableInRaidCheckbox:SetChecked(Target_Settings.enableInRaid)
-    addon.enableInRaidCheckbox:SetScript("OnClick", function(self)
-        Target_Settings.enableInRaid = self:GetChecked()
-        updateNamePlates() -- Update nameplates immediately upon changing the setting
-    end)
-    addon.enableInRaidCheckbox:Show()
+-- Enable in Raid Checkbox
+addon.enableInRaidCheckbox = CreateFrame("CheckButton", "TargetEnableInRaidCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
+addon.enableInRaidCheckbox:SetPoint("TOPLEFT", addon.enableInBattlegroundCheckbox, "BOTTOMLEFT", 0, -5)
+addon.enableInRaidCheckbox.text:SetText("Enable in Raid")
+addon.enableInRaidCheckbox:SetChecked(Target_Settings.enableInRaid)
+addon.enableInRaidCheckbox:SetScript("OnClick", function(self)
+    Target_Settings.enableInRaid = self:GetChecked()
+    updateNamePlates()
+end)
+addon.enableInRaidCheckbox:Show()
 
-    -- Discord Link Label
-    addon.discordLinkLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    addon.discordLinkLabel:SetPoint("TOPLEFT", addon.enableInRaidCheckbox, "BOTTOMLEFT", 0, -20)
-    addon.discordLinkLabel:SetText("Discord Link")
-    addon.discordLinkLabel:Show()
+-- Discord Link Label
+addon.discordLinkLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+addon.discordLinkLabel:SetPoint("TOPLEFT", addon.enableInRaidCheckbox, "BOTTOMLEFT", 0, -20)
+addon.discordLinkLabel:SetText("Discord Link")
+addon.discordLinkLabel:Show()
 
-    -- Discord Link Input Box
-    addon.discordLinkInput = CreateFrame("EditBox", "TargetDiscordLinkInput", addon.optionsFrame, "InputBoxTemplate")
-    addon.discordLinkInput:SetPoint("TOPLEFT", addon.discordLinkLabel, "BOTTOMLEFT", 0, -5)
-    addon.discordLinkInput:SetSize(200, 20)
-    addon.discordLinkInput:SetText("https://discord.gg/dmwegA6Z")
-    addon.discordLinkInput:SetAutoFocus(false)
-    addon.discordLinkInput:SetCursorPosition(0)
-    addon.discordLinkInput:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-    end)
-    addon.discordLinkInput:Show()
+-- Discord Link Input Box
+addon.discordLinkInput = CreateFrame("EditBox", "TargetDiscordLinkInput", addon.optionsFrame, "InputBoxTemplate")
+addon.discordLinkInput:SetPoint("TOPLEFT", addon.discordLinkLabel, "BOTTOMLEFT", 0, -5)
+addon.discordLinkInput:SetSize(200, 20)
+addon.discordLinkInput:SetText("https://discord.gg/dmwegA6Z")
+addon.discordLinkInput:SetAutoFocus(false)
+addon.discordLinkInput:SetCursorPosition(0)
+addon.discordLinkInput:SetScript("OnEscapePressed", function(self)
+    self:ClearFocus()
+end)
+addon.discordLinkInput:Show()
 
-    function addon.optionsFrame:refresh()
-        local isVisible = addon.optionsFrame:IsShown()
-        addon.optionsFrame:SetShown(not isVisible)
-    end
+function addon.optionsFrame:refresh()
+    local isVisible = addon.optionsFrame:IsShown()
+    addon.optionsFrame:SetShown(not isVisible)
+end
 end
