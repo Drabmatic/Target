@@ -1,8 +1,8 @@
-## Interface: 90001
+## Interface: 90105
 ## Title: Target
-## Version: v1.3
-## SavedVariables: Target_Settings
-## Author: Drab & Special Thanks to Hurtntime & NRV!
-## Notes: Shows class textures on targets.
-## Dependencies: 
+## Notes: Trying to update new stuff :D
+## Author: Drab
+## Version: 6.9
+## SavedVariables: Target_Settings, Target_Profiles, Target_CurrentProfile
+
 Target.lua
