@@ -1,8 +1,8 @@
-## Interface: 90105
+## Interface: 100207, 110000
 ## Title: Target
-## Notes: Trying to update new stuff :D
+## Notes: This addon shows target information on nameplates.
 ## Author: Drab
-## Version: 6.9
+## Version: 8.345
 ## SavedVariables: Target_Settings, Target_Profiles, Target_CurrentProfile
 
 Target.lua
