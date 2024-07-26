@@ -208,243 +208,248 @@ local function generateUniqueProfileName(baseName)
 end
 
 function initializeUI()
-    addon.optionsFrame = CreateFrame("Frame", nil, InterfaceOptionsFramePanelContainer)
-    addon.optionsFrame.name = addonName
-    InterfaceOptions_AddCategory(addon.optionsFrame)
+    -- Create the main options frame
+    local optionsFrame = CreateFrame("Frame", "TargetOptionsFrame", UIParent)
+    optionsFrame.name = addonName
+
+    -- Create title
+    local title = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetText("Target Addon Settings")
 
     -- X Offset Slider
-    addon.xSlider = CreateFrame("Slider", "TargetXSlider", addon.optionsFrame, "OptionsSliderTemplate")
-    addon.xSlider:SetPoint("TOP", addon.optionsFrame, "TOP", 0, -20)
-    addon.xSlider:SetMinMaxValues(-200, 200)
-    addon.xSlider:SetValue(Target_Settings.xValue)
-    addon.xSlider:SetValueStep(1)
-    addon.xSlider:SetObeyStepOnDrag(true)
-    addon.xSlider:SetWidth(200)
-    addon.xSlider:SetScript("OnValueChanged", function(self, value)
+    local xSlider = CreateFrame("Slider", "TargetXSlider", optionsFrame, "OptionsSliderTemplate")
+    xSlider:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -40)
+    xSlider:SetMinMaxValues(-200, 200)
+    xSlider:SetValue(Target_Settings.xValue)
+    xSlider:SetValueStep(1)
+    xSlider:SetObeyStepOnDrag(true)
+    xSlider:SetWidth(200)
+    xSlider:SetScript("OnValueChanged", function(self, value)
         _G[self:GetName() .. 'Text']:SetText("X Offset: " .. floor(value))
         Target_Settings.xValue = value
-        if addon.xInput:GetText() ~= tostring(value) then
-            addon.xInput:SetText(tostring(value))
+        if xInput:GetText() ~= tostring(value) then
+            xInput:SetText(tostring(value))
         end
         debouncedUpdateNamePlates() -- Update in real-time
     end)
-    addon.xSlider:Show()
+    xSlider:Show()
 
     -- X Offset Label
-    addon.xLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    addon.xLabel:SetPoint("TOPLEFT", addon.xSlider, "BOTTOMLEFT", 0, -5)
-    addon.xLabel:SetText("X Offset")
-    addon.xLabel:Show()
+    local xLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    xLabel:SetPoint("TOPLEFT", xSlider, "BOTTOMLEFT", 0, -5)
+    xLabel:SetText("X Offset")
+    xLabel:Show()
 
     -- X Offset Input Box
-    addon.xInput = CreateFrame("EditBox", "TargetXInput", addon.optionsFrame, "InputBoxTemplate")
-    addon.xInput:SetPoint("TOP", addon.xSlider, "BOTTOM", 0, -5)
-    addon.xInput:SetSize(80, 20)
-    addon.xInput:SetText(tostring(Target_Settings.xValue))
-    addon.xInput:SetAutoFocus(false)
-    addon.xInput:SetCursorPosition(0)
-    addon.xInput:SetScript("OnEnterPressed", function(self)
+    local xInput = CreateFrame("EditBox", "TargetXInput", optionsFrame, "InputBoxTemplate")
+    xInput:SetPoint("TOP", xSlider, "BOTTOM", 0, -25)
+    xInput:SetSize(80, 20)
+    xInput:SetText(tostring(Target_Settings.xValue))
+    xInput:SetAutoFocus(false)
+    xInput:SetCursorPosition(0)
+    xInput:SetScript("OnEnterPressed", function(self)
         local value = tonumber(self:GetText()) or Target_Settings.xValue
         value = math.min(math.max(value, -200), 200)
         self:SetText(tostring(value))
-        addon.xSlider:SetValue(value)
+        xSlider:SetValue(value)
         Target_Settings.xValue = value
         debouncedUpdateNamePlates() -- Update in real-time
     end)
-    addon.xInput:Show()
+    xInput:Show()
 
     -- Y Offset Slider
-    addon.ySlider = CreateFrame("Slider", "TargetYSlider", addon.optionsFrame, "OptionsSliderTemplate")
-    addon.ySlider:SetPoint("TOP", addon.xInput, "BOTTOM", 0, -20)
-    addon.ySlider:SetMinMaxValues(-200, 200)
-    addon.ySlider:SetValue(Target_Settings.yValue)
-    addon.ySlider:SetValueStep(1)
-    addon.ySlider:SetObeyStepOnDrag(true)
-    addon.ySlider:SetWidth(200)
-    addon.ySlider:SetScript("OnValueChanged", function(self, value)
+    local ySlider = CreateFrame("Slider", "TargetYSlider", optionsFrame, "OptionsSliderTemplate")
+    ySlider:SetPoint("TOP", xInput, "BOTTOM", 0, -40)
+    ySlider:SetMinMaxValues(-200, 200)
+    ySlider:SetValue(Target_Settings.yValue)
+    ySlider:SetValueStep(1)
+    ySlider:SetObeyStepOnDrag(true)
+    ySlider:SetWidth(200)
+    ySlider:SetScript("OnValueChanged", function(self, value)
         _G[self:GetName() .. 'Text']:SetText("Y Offset: " .. floor(value))
         Target_Settings.yValue = value
-        if addon.yInput:GetText() ~= tostring(value) then
-            addon.yInput:SetText(tostring(value))
+        if yInput:GetText() ~= tostring(value) then
+            yInput:SetText(tostring(value))
         end
         debouncedUpdateNamePlates() -- Update in real-time
     end)
-    addon.ySlider:Show()
+    ySlider:Show()
 
     -- Y Offset Label
-    addon.yLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    addon.yLabel:SetPoint("TOPLEFT", addon.ySlider, "BOTTOMLEFT", 0, -5)
-    addon.yLabel:SetText("Y Offset")
-    addon.yLabel:Show()
+    local yLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    yLabel:SetPoint("TOPLEFT", ySlider, "BOTTOMLEFT", 0, -5)
+    yLabel:SetText("Y Offset")
+    yLabel:Show()
 
     -- Y Offset Input Box
-    addon.yInput = CreateFrame("EditBox", "TargetYInput", addon.optionsFrame, "InputBoxTemplate")
-    addon.yInput:SetPoint("TOP", addon.ySlider, "BOTTOM", 0, -5)
-    addon.yInput:SetSize(80, 20)
-    addon.yInput:SetText(tostring(Target_Settings.yValue))
-    addon.yInput:SetAutoFocus(false)
-    addon.yInput:SetCursorPosition(0)
-    addon.yInput:SetScript("OnEnterPressed", function(self)
+    local yInput = CreateFrame("EditBox", "TargetYInput", optionsFrame, "InputBoxTemplate")
+    yInput:SetPoint("TOP", ySlider, "BOTTOM", 0, -25)
+    yInput:SetSize(80, 20)
+    yInput:SetText(tostring(Target_Settings.yValue))
+    yInput:SetAutoFocus(false)
+    yInput:SetCursorPosition(0)
+    yInput:SetScript("OnEnterPressed", function(self)
         local value = tonumber(self:GetText()) or Target_Settings.yValue
         value = math.min(math.max(value, -200), 200)
         self:SetText(tostring(value))
-        addon.ySlider:SetValue(value)
+        ySlider:SetValue(value)
         Target_Settings.yValue = value
         debouncedUpdateNamePlates() -- Update in real-time
     end)
-    addon.yInput:Show()
+    yInput:Show()
 
     -- Icon Style Label
-    addon.iconStyleLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    addon.iconStyleLabel:SetPoint("TOPLEFT", addon.yInput, "BOTTOMLEFT", 0, -20)
-    addon.iconStyleLabel:SetText("Icon Style")
-    addon.iconStyleLabel:Show()
+    local iconStyleLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    iconStyleLabel:SetPoint("TOPLEFT", yInput, "BOTTOMLEFT", 0, -40)
+    iconStyleLabel:SetText("Icon Style")
+    iconStyleLabel:Show()
 
     -- Icon Type Dropdown Menu
-    addon.iconTypeDropdown = CreateFrame("Frame", "TargetIconTypeDropdown", addon.optionsFrame, "UIDropDownMenuTemplate")
-    addon.iconTypeDropdown:SetPoint("TOPLEFT", addon.iconStyleLabel, "BOTTOMLEFT", 0, -5)
-    addon.iconTypeDropdown.initialize = function(self, level)
+    local iconTypeDropdown = CreateFrame("Frame", "TargetIconTypeDropdown", optionsFrame, "UIDropDownMenuTemplate")
+    iconTypeDropdown:SetPoint("TOPLEFT", iconStyleLabel, "BOTTOMLEFT", 0, -5)
+    iconTypeDropdown.initialize = function(self, level)
         local info = UIDropDownMenu_CreateInfo()
         for iconType, data in pairs(iconTypes) do
             info.text = iconType
             info.func = function()
                 Target_Settings.iconType = iconType
-                UIDropDownMenu_SetText(addon.iconTypeDropdown, iconType)
+                UIDropDownMenu_SetText(iconTypeDropdown, iconType)
                 initializePlayers()
                 debouncedUpdateNamePlates() -- Update in real-time
             end
             UIDropDownMenu_AddButton(info, level)
         end
     end
-    UIDropDownMenu_SetWidth(addon.iconTypeDropdown, 150)
-    UIDropDownMenu_SetButtonWidth(addon.iconTypeDropdown, 174)
-    UIDropDownMenu_JustifyText(addon.iconTypeDropdown, "CENTER")
-    UIDropDownMenu_SetText(addon.iconTypeDropdown, Target_Settings.iconType)
-    addon.iconTypeDropdown:Show()
+    UIDropDownMenu_SetWidth(iconTypeDropdown, 150)
+    UIDropDownMenu_SetButtonWidth(iconTypeDropdown, 174)
+    UIDropDownMenu_JustifyText(iconTypeDropdown, "CENTER")
+    UIDropDownMenu_SetText(iconTypeDropdown, Target_Settings.iconType)
+    iconTypeDropdown:Show()
 
     -- Icon Size Slider
-    addon.iconSizeSlider = CreateFrame("Slider", "TargetIconSizeSlider", addon.optionsFrame, "OptionsSliderTemplate")
-    addon.iconSizeSlider:SetPoint("TOPLEFT", addon.iconTypeDropdown, "BOTTOMLEFT", 0, -20)
-    addon.iconSizeSlider:SetMinMaxValues(1, 100)
-    addon.iconSizeSlider:SetValue(tonumber(Target_Settings.iconSize) or 32)
-    addon.iconSizeSlider:SetValueStep(1)
-    addon.iconSizeSlider:SetObeyStepOnDrag(true)
-    addon.iconSizeSlider:SetWidth(200)
-    addon.iconSizeSlider:SetScript("OnValueChanged", function(self, value)
+    local iconSizeSlider = CreateFrame("Slider", "TargetIconSizeSlider", optionsFrame, "OptionsSliderTemplate")
+    iconSizeSlider:SetPoint("TOPLEFT", iconTypeDropdown, "BOTTOMLEFT", 0, -40)
+    iconSizeSlider:SetMinMaxValues(1, 100)
+    iconSizeSlider:SetValue(tonumber(Target_Settings.iconSize) or 32)
+    iconSizeSlider:SetValueStep(1)
+    iconSizeSlider:SetObeyStepOnDrag(true)
+    iconSizeSlider:SetWidth(200)
+    iconSizeSlider:SetScript("OnValueChanged", function(self, value)
         _G[self:GetName() .. 'Text']:SetText("Icon Size: " .. floor(value))
         Target_Settings.iconSize = value
         initializePlayers()
         debouncedUpdateNamePlates() -- Update in real-time
     end)
-    addon.iconSizeSlider:Show()
+    iconSizeSlider:Show()
 
     -- Icon Size Label
-    addon.iconSizeLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    addon.iconSizeLabel:SetPoint("TOPLEFT", addon.iconSizeSlider, "BOTTOMLEFT", 0, -5)
-    addon.iconSizeLabel:SetText("Icon Size")
-    addon.iconSizeLabel:Show()
+    local iconSizeLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    iconSizeLabel:SetPoint("TOPLEFT", iconSizeSlider, "BOTTOMLEFT", 0, -5)
+    iconSizeLabel:SetText("Icon Size")
+    iconSizeLabel:Show()
 
     -- Icon Opacity Slider
-    addon.iconOpacitySlider = CreateFrame("Slider", "TargetIconOpacitySlider", addon.optionsFrame, "OptionsSliderTemplate")
-    addon.iconOpacitySlider:SetPoint("TOPLEFT", addon.iconSizeSlider, "BOTTOMLEFT", 0, -20)
-    addon.iconOpacitySlider:SetMinMaxValues(0.1, 1.0)
-    addon.iconOpacitySlider:SetValue(tonumber(Target_Settings.iconOpacity) or 1.0)
-    addon.iconOpacitySlider:SetValueStep(0.1)
-    addon.iconOpacitySlider:SetObeyStepOnDrag(true)
-    addon.iconOpacitySlider:SetWidth(200)
-    addon.iconOpacitySlider:SetScript("OnValueChanged", function(self, value)
+    local iconOpacitySlider = CreateFrame("Slider", "TargetIconOpacitySlider", optionsFrame, "OptionsSliderTemplate")
+    iconOpacitySlider:SetPoint("TOPLEFT", iconSizeSlider, "BOTTOMLEFT", 0, -40)
+    iconOpacitySlider:SetMinMaxValues(0.1, 1.0)
+    iconOpacitySlider:SetValue(tonumber(Target_Settings.iconOpacity) or 1.0)
+    iconOpacitySlider:SetValueStep(0.1)
+    iconOpacitySlider:SetObeyStepOnDrag(true)
+    iconOpacitySlider:SetWidth(200)
+    iconOpacitySlider:SetScript("OnValueChanged", function(self, value)
         _G[self:GetName() .. 'Text']:SetText("Icon Opacity: " .. string.format("%.1f", value))
         Target_Settings.iconOpacity = value
         initializePlayers()
         debouncedUpdateNamePlates() -- Update in real-time
     end)
-    addon.iconOpacitySlider:Show()
+    iconOpacitySlider:Show()
 
     -- Icon Opacity Label
-    addon.iconOpacityLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    addon.iconOpacityLabel:SetPoint("TOPLEFT", addon.iconOpacitySlider, "BOTTOMLEFT", 0, -5)
-    addon.iconOpacityLabel:SetText("Icon Opacity")
-    addon.iconOpacityLabel:Show()
+    local iconOpacityLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    iconOpacityLabel:SetPoint("TOPLEFT", iconOpacitySlider, "BOTTOMLEFT", 0, -5)
+    iconOpacityLabel:SetText("Icon Opacity")
+    iconOpacityLabel:Show()
 
     -- Enable in Open World Checkbox
-    addon.enableInOpenWorldCheckbox = CreateFrame("CheckButton", "TargetEnableInOpenWorldCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
-    addon.enableInOpenWorldCheckbox:SetPoint("TOPLEFT", addon.iconOpacityLabel, "BOTTOMLEFT", 0, -20)
-    addon.enableInOpenWorldCheckbox.text:SetText("Enable in Open World")
-    addon.enableInOpenWorldCheckbox:SetChecked(Target_Settings.enableInOpenWorld)
-    addon.enableInOpenWorldCheckbox:SetScript("OnClick", function(self)
+    local enableInOpenWorldCheckbox = CreateFrame("CheckButton", "TargetEnableInOpenWorldCheckbox", optionsFrame, "UICheckButtonTemplate")
+    enableInOpenWorldCheckbox:SetPoint("TOPLEFT", iconOpacityLabel, "BOTTOMLEFT", 0, -20)
+    enableInOpenWorldCheckbox.text:SetText("Enable in Open World")
+    enableInOpenWorldCheckbox:SetChecked(Target_Settings.enableInOpenWorld)
+    enableInOpenWorldCheckbox:SetScript("OnClick", function(self)
         Target_Settings.enableInOpenWorld = self:GetChecked()
         debouncedUpdateNamePlates()
     end)
-    addon.enableInOpenWorldCheckbox:Show()
+    enableInOpenWorldCheckbox:Show()
 
     -- Enable in Arena Checkbox
-    addon.enableInArenaCheckbox = CreateFrame("CheckButton", "TargetEnableInArenaCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
-    addon.enableInArenaCheckbox:SetPoint("TOPLEFT", addon.enableInOpenWorldCheckbox, "BOTTOMLEFT", 0, -5)
-    addon.enableInArenaCheckbox.text:SetText("Enable in Arena")
-    addon.enableInArenaCheckbox:SetChecked(Target_Settings.enableInArena)
-    addon.enableInArenaCheckbox:SetScript("OnClick", function(self)
+    local enableInArenaCheckbox = CreateFrame("CheckButton", "TargetEnableInArenaCheckbox", optionsFrame, "UICheckButtonTemplate")
+    enableInArenaCheckbox:SetPoint("TOPLEFT", enableInOpenWorldCheckbox, "BOTTOMLEFT", 0, -5)
+    enableInArenaCheckbox.text:SetText("Enable in Arena")
+    enableInArenaCheckbox:SetChecked(Target_Settings.enableInArena)
+    enableInArenaCheckbox:SetScript("OnClick", function(self)
         Target_Settings.enableInArena = self:GetChecked()
         debouncedUpdateNamePlates()
     end)
-    addon.enableInArenaCheckbox:Show()
+    enableInArenaCheckbox:Show()
 
     -- Enable in Battleground Checkbox
-    addon.enableInBattlegroundCheckbox = CreateFrame("CheckButton", "TargetEnableInBattlegroundCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
-    addon.enableInBattlegroundCheckbox:SetPoint("TOPLEFT", addon.enableInArenaCheckbox, "BOTTOMLEFT", 0, -5)
-    addon.enableInBattlegroundCheckbox.text:SetText("Enable in Battleground")
-    addon.enableInBattlegroundCheckbox:SetChecked(Target_Settings.enableInBattleground)
-    addon.enableInBattlegroundCheckbox:SetScript("OnClick", function(self)
+    local enableInBattlegroundCheckbox = CreateFrame("CheckButton", "TargetEnableInBattlegroundCheckbox", optionsFrame, "UICheckButtonTemplate")
+    enableInBattlegroundCheckbox:SetPoint("TOPLEFT", enableInArenaCheckbox, "BOTTOMLEFT", 0, -5)
+    enableInBattlegroundCheckbox.text:SetText("Enable in Battleground")
+    enableInBattlegroundCheckbox:SetChecked(Target_Settings.enableInBattleground)
+    enableInBattlegroundCheckbox:SetScript("OnClick", function(self)
         Target_Settings.enableInBattleground = self:GetChecked()
         debouncedUpdateNamePlates()
     end)
-    addon.enableInBattlegroundCheckbox:Show()
+    enableInBattlegroundCheckbox:Show()
 
     -- Enable in Raid Checkbox
-    addon.enableInRaidCheckbox = CreateFrame("CheckButton", "TargetEnableInRaidCheckbox", addon.optionsFrame, "UICheckButtonTemplate")
-    addon.enableInRaidCheckbox:SetPoint("TOPLEFT", addon.enableInBattlegroundCheckbox, "BOTTOMLEFT", 0, -5)
-    addon.enableInRaidCheckbox.text:SetText("Enable in Raid")
-    addon.enableInRaidCheckbox:SetChecked(Target_Settings.enableInRaid)
-    addon.enableInRaidCheckbox:SetScript("OnClick", function(self)
+    local enableInRaidCheckbox = CreateFrame("CheckButton", "TargetEnableInRaidCheckbox", optionsFrame, "UICheckButtonTemplate")
+    enableInRaidCheckbox:SetPoint("TOPLEFT", enableInBattlegroundCheckbox, "BOTTOMLEFT", 0, -5)
+    enableInRaidCheckbox.text:SetText("Enable in Raid")
+    enableInRaidCheckbox:SetChecked(Target_Settings.enableInRaid)
+    enableInRaidCheckbox:SetScript("OnClick", function(self)
         Target_Settings.enableInRaid = self:GetChecked()
         debouncedUpdateNamePlates()
     end)
-    addon.enableInRaidCheckbox:Show()
+    enableInRaidCheckbox:Show()
 
     -- Profile Management
-    addon.profileLabel = addon.optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    addon.profileLabel:SetPoint("TOPLEFT", addon.enableInRaidCheckbox, "BOTTOMLEFT", 0, -20)
-    addon.profileLabel:SetText("Profile Management")
-    addon.profileLabel:Show()
+    local profileLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    profileLabel:SetPoint("TOPLEFT", enableInRaidCheckbox, "BOTTOMLEFT", 0, -40)
+    profileLabel:SetText("Profile Management")
+    profileLabel:Show()
 
     -- Profile Dropdown Menu
-    addon.profileDropdown = CreateFrame("Frame", "TargetProfileDropdown", addon.optionsFrame, "UIDropDownMenuTemplate")
-    addon.profileDropdown:SetPoint("TOPLEFT", addon.profileLabel, "BOTTOMLEFT", 0, -5)
-    addon.profileDropdown.initialize = function(self, level)
+    local profileDropdown = CreateFrame("Frame", "TargetProfileDropdown", optionsFrame, "UIDropDownMenuTemplate")
+    profileDropdown:SetPoint("TOPLEFT", profileLabel, "BOTTOMLEFT", 0, -5)
+    profileDropdown.initialize = function(self, level)
         local info = UIDropDownMenu_CreateInfo()
         for profileName in pairs(profiles) do
             info.text = profileName
             info.func = function()
                 currentProfile = profileName
                 Target_Settings = profiles[profileName]
-                UIDropDownMenu_SetText(addon.profileDropdown, profileName)
+                UIDropDownMenu_SetText(profileDropdown, profileName)
                 initializePlayers()
                 debouncedUpdateNamePlates()
             end
             UIDropDownMenu_AddButton(info, level)
         end
     end
-    UIDropDownMenu_SetWidth(addon.profileDropdown, 150)
-    UIDropDownMenu_SetButtonWidth(addon.profileDropdown, 174)
-    UIDropDownMenu_JustifyText(addon.profileDropdown, "CENTER")
-    UIDropDownMenu_SetText(addon.profileDropdown, currentProfile)
-    addon.profileDropdown:Show()
+    UIDropDownMenu_SetWidth(profileDropdown, 150)
+    UIDropDownMenu_SetButtonWidth(profileDropdown, 174)
+    UIDropDownMenu_JustifyText(profileDropdown, "CENTER")
+    UIDropDownMenu_SetText(profileDropdown, currentProfile)
+    profileDropdown:Show()
 
     -- Save Profile Button
-    addon.saveProfileButton = CreateFrame("Button", "TargetSaveProfileButton", addon.optionsFrame, "UIPanelButtonTemplate")
-    addon.saveProfileButton:SetPoint("TOPLEFT", addon.profileDropdown, "BOTTOMLEFT", 0, -10)
-    addon.saveProfileButton:SetSize(120, 20)
-    addon.saveProfileButton:SetText("Save Profile")
-    addon.saveProfileButton:SetScript("OnClick", function()
+    local saveProfileButton = CreateFrame("Button", "TargetSaveProfileButton", optionsFrame, "UIPanelButtonTemplate")
+    saveProfileButton:SetPoint("TOPLEFT", profileDropdown, "BOTTOMLEFT", 0, -10)
+    saveProfileButton:SetSize(120, 20)
+    saveProfileButton:SetText("Save Profile")
+    saveProfileButton:SetScript("OnClick", function()
         local profileName = currentProfile
         if profileName ~= "Default" and profiles[profileName] then
             StaticPopupDialogs["SAVE_PROFILE_CONFIRMATION"] = {
@@ -468,23 +473,76 @@ function initializeUI()
             Target_CurrentProfile = currentProfile
         end
     end)
-    addon.saveProfileButton:Show()
+    saveProfileButton:Show()
 
     -- New Profile Button
-    addon.newProfileButton = CreateFrame("Button", "TargetNewProfileButton", addon.optionsFrame, "UIPanelButtonTemplate")
-    addon.newProfileButton:SetPoint("TOPLEFT", addon.saveProfileButton, "BOTTOMLEFT", 0, -10)
-    addon.newProfileButton:SetSize(120, 20)
-    addon.newProfileButton:SetText("New Profile")
-    addon.newProfileButton:SetScript("OnClick", function()
+    local newProfileButton = CreateFrame("Button", "TargetNewProfileButton", optionsFrame, "UIPanelButtonTemplate")
+    newProfileButton:SetPoint("TOPLEFT", saveProfileButton, "BOTTOMLEFT", 0, -10)
+    newProfileButton:SetSize(120, 20)
+    newProfileButton:SetText("New Profile")
+    newProfileButton:SetScript("OnClick", function()
         local newProfileName = generateUniqueProfileName("Profile")
         profiles[newProfileName] = CopyTable(defaultSettings)
         currentProfile = newProfileName
         Target_Settings = profiles[newProfileName]
-        UIDropDownMenu_SetText(addon.profileDropdown, newProfileName)
+        UIDropDownMenu_SetText(profileDropdown, newProfileName)
         Target_Profiles = profiles
         Target_CurrentProfile = currentProfile
         initializePlayers()
         debouncedUpdateNamePlates()
     end)
-    addon.newProfileButton:Show()
+    newProfileButton:Show()
+
+    -- Register the options frame with the Blizzard Interface Options
+    if Settings and Settings.RegisterCanvasLayoutCategory then
+        local category = Settings.RegisterCanvasLayoutCategory(optionsFrame, addonName)
+        Settings.RegisterAddOnCategory(category)
+    else
+        InterfaceOptions_AddCategory(optionsFrame)
+    end
 end
+
+-- Ensure the initializeUI function is called when the addon is loaded
+frame:SetScript("OnEvent", function(self, event, ...)
+    if event == "ADDON_LOADED" and ... == addonName then
+        if not Target_Settings then
+            Target_Settings = CopyTable(defaultSettings)
+        end
+        if not Target_Profiles then
+            Target_Profiles = { ["Default"] = CopyTable(defaultSettings) }
+        end
+        if not Target_CurrentProfile then
+            Target_CurrentProfile = "Default"
+        end
+
+        -- Load the current profile
+        profiles = Target_Profiles
+        currentProfile = Target_CurrentProfile
+        Target_Settings = profiles[currentProfile]
+
+        initializeUI()
+    end
+
+    if event == "PLAYER_LOGIN" then
+        initializeUI()
+        debouncedUpdateNamePlates()
+    end
+
+    -- Handle other events
+    if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
+        initializePlayers()
+        clearNamePlates()
+        debouncedUpdateNamePlates()
+    elseif event == "PLAYER_TARGET_CHANGED" or event == "UNIT_TARGET" then
+        clearNamePlates()
+        debouncedUpdateNamePlates()
+    end
+end)
+
+-- Register the frame for events
+frame:RegisterEvent("ADDON_LOADED")
+frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("GROUP_ROSTER_UPDATE")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("PLAYER_TARGET_CHANGED")
+frame:RegisterEvent("UNIT_TARGET")
