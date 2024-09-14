@@ -10,7 +10,8 @@ local defaultSettings = {
     enableInOpenWorld = true,
     enableInArena = true,
     enableInBattleground = true,
-    enableInRaid = true
+    enableInRaid = true,
+    enableInDelves = true, -- For new delves
 }
 
 local iconTypes = {
@@ -86,7 +87,8 @@ local function isAddonEnabled()
         none = Target_Settings.enableInOpenWorld,
         arena = Target_Settings.enableInArena,
         pvp = Target_Settings.enableInBattleground,
-        raid = Target_Settings.enableInRaid
+        raid = Target_Settings.enableInRaid,
+        delves = Target_Settings.enableInDelves -- New Delve feature
     }
     return zoneChecks[zoneType] or false
 end
@@ -194,14 +196,6 @@ end
 
 frame:SetScript("OnEvent", OnEvent)
 
--- Register events
-frame:RegisterEvent("ADDON_LOADED")
-frame:RegisterEvent("PLAYER_LOGIN")
-frame:RegisterEvent("GROUP_ROSTER_UPDATE")
-frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-frame:RegisterEvent("PLAYER_TARGET_CHANGED")
-frame:RegisterEvent("UNIT_TARGET")
-
 -- Function to generate a unique profile name
 local function generateUniqueProfileName(baseName)
     local counter = 1
@@ -215,6 +209,7 @@ local function generateUniqueProfileName(baseName)
     return uniqueName
 end
 
+-- UI Panel
 function initializeUI()
     local optionsFrame = CreateFrame("Frame", "TargetOptionsFrame", UIParent)
     optionsFrame.name = addonName
@@ -224,19 +219,199 @@ function initializeUI()
     title:SetText("Target Addon Settings")
 
     -- X Offset Slider
+    local xSliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    xSliderLabel:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -20)
+    xSliderLabel:SetText("X Offset")
+
     local xSlider = CreateFrame("Slider", "TargetXSlider", optionsFrame, "OptionsSliderTemplate")
-    xSlider:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -40)
+    xSlider:SetPoint("TOPLEFT", xSliderLabel, "BOTTOMLEFT", 0, -10)
     xSlider:SetMinMaxValues(-200, 200)
     xSlider:SetValue(Target_Settings.xValue)
     xSlider:SetValueStep(1)
     xSlider:SetObeyStepOnDrag(true)
     xSlider:SetWidth(200)
+
+    local xSliderValue = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    xSliderValue:SetPoint("LEFT", xSlider, "RIGHT", 10, 0)
+    xSliderValue:SetText(floor(Target_Settings.xValue))
+
     xSlider:SetScript("OnValueChanged", function(self, value)
-        _G[self:GetName() .. 'Text']:SetText("X Offset: " .. floor(value))
+        value = floor(value + 0.5)
+        xSliderValue:SetText(value)
         Target_Settings.xValue = value
         updateNamePlates()
     end)
     xSlider:Show()
+
+    -- Y Offset Slider
+    local ySliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    ySliderLabel:SetPoint("TOPLEFT", xSlider, "BOTTOMLEFT", 0, -30)
+    ySliderLabel:SetText("Y Offset")
+
+    local ySlider = CreateFrame("Slider", "TargetYSlider", optionsFrame, "OptionsSliderTemplate")
+    ySlider:SetPoint("TOPLEFT", ySliderLabel, "BOTTOMLEFT", 0, -10)
+    ySlider:SetMinMaxValues(-200, 200)
+    ySlider:SetValue(Target_Settings.yValue)
+    ySlider:SetValueStep(1)
+    ySlider:SetObeyStepOnDrag(true)
+    ySlider:SetWidth(200)
+
+    local ySliderValue = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    ySliderValue:SetPoint("LEFT", ySlider, "RIGHT", 10, 0)
+    ySliderValue:SetText(floor(Target_Settings.yValue))
+
+    ySlider:SetScript("OnValueChanged", function(self, value)
+        value = floor(value + 0.5)
+        ySliderValue:SetText(value)
+        Target_Settings.yValue = value
+        updateNamePlates()
+    end)
+    ySlider:Show()
+
+    -- Icon Size Slider
+    local sizeSliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    sizeSliderLabel:SetPoint("TOPLEFT", ySlider, "BOTTOMLEFT", 0, -30)
+    sizeSliderLabel:SetText("Icon Size")
+
+    local sizeSlider = CreateFrame("Slider", "TargetSizeSlider", optionsFrame, "OptionsSliderTemplate")
+    sizeSlider:SetPoint("TOPLEFT", sizeSliderLabel, "BOTTOMLEFT", 0, -10)
+    sizeSlider:SetMinMaxValues(10, 100)
+    sizeSlider:SetValue(Target_Settings.iconSize)
+    sizeSlider:SetValueStep(1)
+    sizeSlider:SetObeyStepOnDrag(true)
+    sizeSlider:SetWidth(200)
+
+    local sizeSliderValue = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    sizeSliderValue:SetPoint("LEFT", sizeSlider, "RIGHT", 10, 0)
+    sizeSliderValue:SetText(floor(Target_Settings.iconSize))
+
+    sizeSlider:SetScript("OnValueChanged", function(self, value)
+        value = floor(value + 0.5)
+        sizeSliderValue:SetText(value)
+        Target_Settings.iconSize = value
+        -- Update the size of all player textures
+        for _, player in pairs(players) do
+            if player.texture then
+                player.texture:SetSize(value, value)
+            end
+        end
+        updateNamePlates()
+    end)
+    sizeSlider:Show()
+
+    -- Icon Opacity Slider
+    local opacitySliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    opacitySliderLabel:SetPoint("TOPLEFT", sizeSlider, "BOTTOMLEFT", 0, -30)
+    opacitySliderLabel:SetText("Icon Opacity")
+
+    local opacitySlider = CreateFrame("Slider", "TargetOpacitySlider", optionsFrame, "OptionsSliderTemplate")
+    opacitySlider:SetPoint("TOPLEFT", opacitySliderLabel, "BOTTOMLEFT", 0, -10)
+    opacitySlider:SetMinMaxValues(0.1, 1.0)
+    opacitySlider:SetValue(Target_Settings.iconOpacity)
+    opacitySlider:SetValueStep(0.1)
+    opacitySlider:SetObeyStepOnDrag(true)
+    opacitySlider:SetWidth(200)
+
+    local opacitySliderValue = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    opacitySliderValue:SetPoint("LEFT", opacitySlider, "RIGHT", 10, 0)
+    opacitySliderValue:SetText(string.format("%.1f", Target_Settings.iconOpacity))
+
+    opacitySlider:SetScript("OnValueChanged", function(self, value)
+        value = tonumber(string.format("%.1f", value))
+        opacitySliderValue:SetText(value)
+        Target_Settings.iconOpacity = value
+        -- Update the opacity of all player textures
+        for _, player in pairs(players) do
+            if player.texture then
+                player.texture:SetAlpha(value)
+            end
+        end
+        updateNamePlates()
+    end)
+    opacitySlider:Show()
+
+    -- Toggle options for different game modes
+    local checkboxData = {
+        { label = "Enable in Open World", setting = "enableInOpenWorld" },
+        { label = "Enable in Arena", setting = "enableInArena" },
+        { label = "Enable in Battleground", setting = "enableInBattleground" },
+        { label = "Enable in Raid", setting = "enableInRaid" },
+        { label = "Enable in Delves", setting = "enableInDelves" },
+    }
+
+    local lastControl = opacitySlider
+    for i, data in ipairs(checkboxData) do
+        local checkbox = CreateFrame("CheckButton", "TargetCheckbox" .. i, optionsFrame, "UICheckButtonTemplate")
+        checkbox:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -20)
+        checkbox.text = checkbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        checkbox.text:SetPoint("LEFT", checkbox, "RIGHT", 0, 1)
+        checkbox.text:SetText(data.label)
+        checkbox:SetChecked(Target_Settings[data.setting])
+        checkbox:SetScript("OnClick", function(self)
+            Target_Settings[data.setting] = self:GetChecked()
+            updateNamePlates()
+        end)
+        lastControl = checkbox
+    end
+
+    -- Reload UI Button
+    local reloadButton = CreateFrame("Button", "TargetReloadButton", optionsFrame, "UIPanelButtonTemplate")
+    reloadButton:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -30)
+    reloadButton:SetSize(120, 25)
+    reloadButton:SetText("Reload UI")
+    reloadButton:SetScript("OnClick", function() ReloadUI() end)
+
+    -- Donation button
+    local donateButton = CreateFrame("Button", "TargetDonateButton", optionsFrame, "UIPanelButtonTemplate")
+    donateButton:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 10)
+    donateButton:SetSize(120, 25)
+    donateButton:SetText("Donate")
+    donateButton:SetScript("OnClick", function()
+        local popup = CreateFrame("Frame", "DonatePopup", UIParent, "BasicFrameTemplateWithInset")
+        popup:SetSize(350, 150)
+        popup:SetPoint("CENTER")
+        popup:SetFrameStrata("DIALOG")
+
+        popup.title = popup:CreateFontString(nil, "OVERLAY")
+        popup.title:SetFontObject("GameFontHighlight")
+        popup.title:SetPoint("TOP", popup.TitleBg, "TOP", 0, -5)
+        popup.title:SetText("Support This Addon")
+
+        local donateText = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        donateText:SetPoint("TOPLEFT", popup, "TOPLEFT", 15, -35)
+        donateText:SetWidth(320)
+        donateText:SetJustifyH("LEFT")
+        donateText:SetText("Support this addon by donating! Copy the link below:")
+
+        local editBox = CreateFrame("EditBox", nil, popup, "InputBoxTemplate")
+        editBox:SetSize(320, 20)
+        editBox:SetPoint("TOP", donateText, "BOTTOM", 0, -10)
+        editBox:SetAutoFocus(false)
+        editBox:SetText("https://paypal.me/Drabio?country.x=US&locale.x=en_US")
+        editBox:HighlightText()
+        editBox:SetCursorPosition(0)
+        editBox:SetScript("OnEscapePressed", function(self)
+            self:ClearFocus()
+        end)
+        editBox:SetScript("OnTextChanged", function(self)
+            self:SetText("https://paypal.me/Drabio?country.x=US&locale.x=en_US")
+            self:HighlightText()
+        end)
+        editBox:SetScript("OnEditFocusGained", function(self)
+            self:HighlightText()
+        end)
+        editBox:SetScript("OnMouseUp", function(self)
+            self:HighlightText()
+        end)
+        editBox:SetScript("OnEditFocusLost", function(self)
+            self:HighlightText(0, 0)
+        end)
+        editBox:EnableMouse(true)
+        editBox:SetFocus()
+
+        local closeButton = CreateFrame("Button", nil, popup, "UIPanelCloseButton")
+        closeButton:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -5, -5)
+    end)
 
     -- Register the options frame
     if Settings and Settings.RegisterCanvasLayoutCategory then
