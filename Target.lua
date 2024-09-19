@@ -11,13 +11,14 @@ local defaultSettings = {
     enableInArena = true,
     enableInBattleground = true,
     enableInRaid = true,
-    enableInDelves = true, -- For new delves
+    enableInDungeon = true,  -- For dungeons
+    enableInDelves = true,   -- For new delves
 }
 
 local iconTypes = {
-    default = { suffix = "", useClassColor = false },
-    circle = { suffix = "-circle", useClassColor = false },
-    classColor = { suffix = "-color", useClassColor = true }
+    ["Default"] = { suffix = "", useClassColor = false },
+    ["Circle"] = { suffix = "-circle", useClassColor = false },
+    ["Class Color"] = { suffix = "-color", useClassColor = true }
 }
 
 local frame = CreateFrame("Frame")
@@ -45,7 +46,7 @@ local function createPlayer(unitId)
         player.class = player.class:lower()
     end
 
-    local iconType = iconTypes[Target_Settings.iconType] or iconTypes["default"]
+    local iconType = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
     local classImage = player.class .. iconType.suffix .. ".tga"
 
     if not player.texture then
@@ -88,7 +89,8 @@ local function isAddonEnabled()
         arena = Target_Settings.enableInArena,
         pvp = Target_Settings.enableInBattleground,
         raid = Target_Settings.enableInRaid,
-        delves = Target_Settings.enableInDelves -- New Delve feature
+        party = Target_Settings.enableInDungeon,  -- For dungeons
+        delves = Target_Settings.enableInDelves   -- New Delve feature
     }
     return zoneChecks[zoneType] or false
 end
@@ -218,9 +220,54 @@ function initializeUI()
     title:SetPoint("TOPLEFT", 16, -16)
     title:SetText("Target Addon Settings")
 
+    local lastControl = title
+
+    -- Icon Type Dropdown
+    local iconTypeLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    iconTypeLabel:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -20)
+    iconTypeLabel:SetText("Icon Style")
+
+    local iconTypeDropdown = CreateFrame("Frame", "TargetIconTypeDropdown", optionsFrame, "UIDropDownMenuTemplate")
+    iconTypeDropdown:SetPoint("TOPLEFT", iconTypeLabel, "BOTTOMLEFT", -15, -10)
+    UIDropDownMenu_SetWidth(iconTypeDropdown, 150)
+
+    local function OnClick(self)
+        UIDropDownMenu_SetSelectedID(iconTypeDropdown, self:GetID())
+        Target_Settings.iconType = self.value
+        -- Update player textures to use the new icon type
+        for _, player in pairs(players) do
+            if player.texture then
+                local iconType = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
+                local classImage = player.class .. iconType.suffix .. ".tga"
+                player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
+            end
+        end
+        updateNamePlates()
+    end
+
+    local function Initialize(self, level)
+        local info = UIDropDownMenu_CreateInfo()
+        local index = 1
+        for k, v in pairs(iconTypes) do
+            info = UIDropDownMenu_CreateInfo()
+            info.text = k
+            info.value = k
+            info.func = OnClick
+            info.checked = (Target_Settings.iconType == k)
+            UIDropDownMenu_AddButton(info, level)
+            if info.checked then
+                UIDropDownMenu_SetSelectedID(iconTypeDropdown, index)
+            end
+            index = index + 1
+        end
+    end
+
+    UIDropDownMenu_Initialize(iconTypeDropdown, Initialize)
+    lastControl = iconTypeDropdown
+
     -- X Offset Slider
     local xSliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    xSliderLabel:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -20)
+    xSliderLabel:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 15, -20)
     xSliderLabel:SetText("X Offset")
 
     local xSlider = CreateFrame("Slider", "TargetXSlider", optionsFrame, "OptionsSliderTemplate")
@@ -242,10 +289,11 @@ function initializeUI()
         updateNamePlates()
     end)
     xSlider:Show()
+    lastControl = xSlider
 
     -- Y Offset Slider
     local ySliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    ySliderLabel:SetPoint("TOPLEFT", xSlider, "BOTTOMLEFT", 0, -30)
+    ySliderLabel:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -20)
     ySliderLabel:SetText("Y Offset")
 
     local ySlider = CreateFrame("Slider", "TargetYSlider", optionsFrame, "OptionsSliderTemplate")
@@ -267,10 +315,11 @@ function initializeUI()
         updateNamePlates()
     end)
     ySlider:Show()
+    lastControl = ySlider
 
     -- Icon Size Slider
     local sizeSliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    sizeSliderLabel:SetPoint("TOPLEFT", ySlider, "BOTTOMLEFT", 0, -30)
+    sizeSliderLabel:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -20)
     sizeSliderLabel:SetText("Icon Size")
 
     local sizeSlider = CreateFrame("Slider", "TargetSizeSlider", optionsFrame, "OptionsSliderTemplate")
@@ -298,10 +347,11 @@ function initializeUI()
         updateNamePlates()
     end)
     sizeSlider:Show()
+    lastControl = sizeSlider
 
     -- Icon Opacity Slider
     local opacitySliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    opacitySliderLabel:SetPoint("TOPLEFT", sizeSlider, "BOTTOMLEFT", 0, -30)
+    opacitySliderLabel:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -20)
     opacitySliderLabel:SetText("Icon Opacity")
 
     local opacitySlider = CreateFrame("Slider", "TargetOpacitySlider", optionsFrame, "OptionsSliderTemplate")
@@ -329,6 +379,7 @@ function initializeUI()
         updateNamePlates()
     end)
     opacitySlider:Show()
+    lastControl = opacitySlider
 
     -- Toggle options for different game modes
     local checkboxData = {
@@ -336,10 +387,10 @@ function initializeUI()
         { label = "Enable in Arena", setting = "enableInArena" },
         { label = "Enable in Battleground", setting = "enableInBattleground" },
         { label = "Enable in Raid", setting = "enableInRaid" },
+        { label = "Enable in Dungeons", setting = "enableInDungeon" },  -- For dungeons
         { label = "Enable in Delves", setting = "enableInDelves" },
     }
 
-    local lastControl = opacitySlider
     for i, data in ipairs(checkboxData) do
         local checkbox = CreateFrame("CheckButton", "TargetCheckbox" .. i, optionsFrame, "UICheckButtonTemplate")
         checkbox:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -20)
@@ -354,16 +405,20 @@ function initializeUI()
         lastControl = checkbox
     end
 
+    -- Donation and Reload UI Buttons
+    local buttonContainer = CreateFrame("Frame", nil, optionsFrame)
+    buttonContainer:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -30)
+    buttonContainer:SetSize(1, 1)
+
     -- Reload UI Button
-    local reloadButton = CreateFrame("Button", "TargetReloadButton", optionsFrame, "UIPanelButtonTemplate")
-    reloadButton:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -30)
+    local reloadButton = CreateFrame("Button", "TargetReloadButton", buttonContainer, "UIPanelButtonTemplate")
     reloadButton:SetSize(120, 25)
     reloadButton:SetText("Reload UI")
     reloadButton:SetScript("OnClick", function() ReloadUI() end)
+    reloadButton:SetPoint("LEFT", buttonContainer, "LEFT", 0, 0)
 
-    -- Donation button
-    local donateButton = CreateFrame("Button", "TargetDonateButton", optionsFrame, "UIPanelButtonTemplate")
-    donateButton:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 10)
+    -- Donation Button
+    local donateButton = CreateFrame("Button", "TargetDonateButton", buttonContainer, "UIPanelButtonTemplate")
     donateButton:SetSize(120, 25)
     donateButton:SetText("Donate")
     donateButton:SetScript("OnClick", function()
@@ -412,6 +467,7 @@ function initializeUI()
         local closeButton = CreateFrame("Button", nil, popup, "UIPanelCloseButton")
         closeButton:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -5, -5)
     end)
+    donateButton:SetPoint("LEFT", reloadButton, "RIGHT", 10, 0)
 
     -- Register the options frame
     if Settings and Settings.RegisterCanvasLayoutCategory then
