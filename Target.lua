@@ -4,7 +4,7 @@ local addonName, addon = ...
 local defaultSettings = {
     xValue = 0,
     yValue = 0,
-    iconType = "default",
+    iconType = "Default",
     iconSize = 32,
     iconOpacity = 1.0,
     enableInOpenWorld = true,
@@ -27,7 +27,8 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("PLAYER_TARGET_CHANGED")
-frame:RegisterEvent("UNIT_TARGET")
+-- Register UNIT_TARGET events for player and party members
+frame:RegisterUnitEvent("UNIT_TARGET", "player", "party1", "party2", "party3", "party4")
 
 local players = {}
 local nameplateFrames = {}
@@ -165,10 +166,16 @@ local function OnEvent(self, event, ...)
         clearNamePlates()
         updateNamePlates()  -- Initial nameplate update
         startTicker()  -- Start continuous updates
-    elseif event == "PLAYER_TARGET_CHANGED" or event == "UNIT_TARGET" then
-        -- Clear nameplates only if the target actually changes
+    elseif event == "PLAYER_TARGET_CHANGED" then
         clearNamePlates()
-        updateNamePlates()  -- Update after target change
+        updateNamePlates()
+    elseif event == "UNIT_TARGET" then
+        local unit = ...
+        if unit and players[unit] then
+            -- Only update if the unit is a player or party member we're tracking
+            clearNamePlates()
+            updateNamePlates()
+        end
     elseif event == "ADDON_LOADED" and ... == addonName then
         if not Target_Settings then
             Target_Settings = CopyTable(defaultSettings)
