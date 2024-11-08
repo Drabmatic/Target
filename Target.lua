@@ -1,3 +1,4 @@
+-- Adding Profile Management, Enhancing UI Organization, and Adding More Features
 local addonName, addon = ...
 
 -- Default values for settings
@@ -15,6 +16,11 @@ local defaultSettings = {
     enableInDelves = true,   -- For new delves
 }
 
+local profiles = {
+    Default = CopyTable(defaultSettings)
+}
+local currentProfile = "Default"
+
 local iconTypes = {
     ["Default"] = { suffix = "", useClassColor = false },
     ["Circle"] = { suffix = "-circle", useClassColor = false },
@@ -27,12 +33,42 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("PLAYER_TARGET_CHANGED")
--- Register UNIT_TARGET events for player and party members
 frame:RegisterUnitEvent("UNIT_TARGET", "player", "party1", "party2", "party3", "party4")
 
 local players = {}
 local nameplateFrames = {}
 local updateTicker -- This will periodically update icons
+
+-- Function to save settings persistently
+local function SaveProfileSettings()
+    Target_Profiles[currentProfile] = CopyTable(Target_Settings)
+    Target_CurrentProfile = currentProfile
+end
+
+-- Function to generate a unique profile name
+local function generateUniqueProfileName(baseName)
+    local counter = 1
+    local uniqueName = baseName
+
+    while profiles[uniqueName] do
+        uniqueName = baseName .. " " .. counter
+        counter = counter + 1
+    end
+
+    return uniqueName
+end
+
+-- Function to delete a profile
+local function deleteProfile(profileName)
+    if profileName and profiles[profileName] and profileName ~= "Default" then
+        profiles[profileName] = nil
+        if currentProfile == profileName then
+            currentProfile = "Default"
+            Target_Settings = profiles[currentProfile]
+        end
+        SaveProfileSettings()
+    end
+end
 
 -- Function to create or update a player object
 local function createPlayer(unitId)
@@ -205,40 +241,122 @@ end
 
 frame:SetScript("OnEvent", OnEvent)
 
--- Function to generate a unique profile name
-local function generateUniqueProfileName(baseName)
-    local counter = 1
-    local uniqueName = baseName
-
-    while profiles[uniqueName] do
-        uniqueName = baseName .. " " .. counter
-        counter = counter + 1
+-- UI Panel for Enhanced Settings
+function initializeUI()
+    if TargetOptionsFrame then
+        TargetOptionsFrame:Hide() -- Hide previous instance if it exists
     end
 
-    return uniqueName
-end
-
--- UI Panel
-function initializeUI()
-    local optionsFrame = CreateFrame("Frame", "TargetOptionsFrame", UIParent)
+    local optionsFrame = CreateFrame("Frame", "TargetOptionsFrame", UIParent, "BackdropTemplate")
     optionsFrame.name = addonName
+    optionsFrame:SetSize(600, 500) -- Adjusted size
+    optionsFrame:SetPoint("CENTER")
+    optionsFrame:Hide() -- Start hidden, show only when options are opened
 
     local title = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetPoint("TOP", optionsFrame, "TOP", 0, -16)
     title:SetText("Target Addon Settings")
 
-    local lastControl = title
+    -- Create a container frame
+    local container = CreateFrame("Frame", nil, optionsFrame)
+    container:SetSize(optionsFrame:GetWidth() - 40, optionsFrame:GetHeight() - 80)
+    container:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -50)
+
+    -- Create left and right columns
+    local leftColumn = CreateFrame("Frame", nil, container)
+    leftColumn:SetSize((container:GetWidth() - 20) / 2, container:GetHeight())
+    leftColumn:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
+
+    local rightColumn = CreateFrame("Frame", nil, container)
+    rightColumn:SetSize((container:GetWidth() - 20) / 2, container:GetHeight())
+    rightColumn:SetPoint("TOPLEFT", leftColumn, "TOPRIGHT", 20, 0)
+
+    -- Left Column Controls
+    local lastControlLeft = nil
+
+    -- Profiles Section
+    local profileTitle = leftColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    profileTitle:SetPoint("TOPLEFT", 0, 0)
+    profileTitle:SetText("Profiles")
+    lastControlLeft = profileTitle
+
+    -- Dropdown to select profile
+    local profileDropdown = CreateFrame("Frame", "TargetProfileDropdown", leftColumn, "UIDropDownMenuTemplate")
+    profileDropdown:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", -15, -5)
+    UIDropDownMenu_SetWidth(profileDropdown, 150)
+
+    local function OnClick(self)
+        UIDropDownMenu_SetSelectedID(profileDropdown, self:GetID())
+        currentProfile = self.value
+        Target_Settings = CopyTable(profiles[currentProfile])
+        updateNamePlates()
+        SaveProfileSettings()
+    end
+
+    local function Initialize(self, level)
+        local info = UIDropDownMenu_CreateInfo()
+        local index = 1
+        for k, v in pairs(profiles) do
+            info = UIDropDownMenu_CreateInfo()
+            info.text = k
+            info.value = k
+            info.func = OnClick
+            info.checked = (currentProfile == k)
+            UIDropDownMenu_AddButton(info, level)
+            if info.checked then
+                UIDropDownMenu_SetSelectedID(profileDropdown, index)
+            end
+            index = index + 1
+        end
+    end
+
+    UIDropDownMenu_Initialize(profileDropdown, Initialize)
+    lastControlLeft = profileDropdown
+
+    -- Create New Profile Button
+    local createProfileButton = CreateFrame("Button", "CreateProfileButton", leftColumn, "UIPanelButtonTemplate")
+    createProfileButton:SetSize(120, 25)
+    createProfileButton:SetText("Create Profile")
+    createProfileButton:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, -10)
+    createProfileButton:SetScript("OnClick", function()
+        local newProfileName = generateUniqueProfileName("New Profile")
+        profiles[newProfileName] = CopyTable(Target_Settings)
+        currentProfile = newProfileName
+        Target_Settings = profiles[currentProfile]
+        UIDropDownMenu_Initialize(profileDropdown, Initialize)
+        updateNamePlates()
+        SaveProfileSettings()
+    end)
+    lastControlLeft = createProfileButton
+
+    -- Delete Profile Button
+    local deleteProfileButton = CreateFrame("Button", "DeleteProfileButton", leftColumn, "UIPanelButtonTemplate")
+    deleteProfileButton:SetSize(120, 25)
+    deleteProfileButton:SetText("Delete Profile")
+    deleteProfileButton:SetPoint("LEFT", createProfileButton, "RIGHT", 10, 0)
+    deleteProfileButton:SetScript("OnClick", function()
+        deleteProfile(currentProfile)
+        UIDropDownMenu_Initialize(profileDropdown, Initialize)
+        updateNamePlates()
+    end)
+    -- No need to update lastControlLeft since it's on the same row
+
+    -- General Settings Title
+    local generalSettingsTitle = leftColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    generalSettingsTitle:SetPoint("TOPLEFT", createProfileButton, "BOTTOMLEFT", 0, -20)
+    generalSettingsTitle:SetText("General Settings")
+    lastControlLeft = generalSettingsTitle
 
     -- Icon Type Dropdown
-    local iconTypeLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    iconTypeLabel:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -20)
-    iconTypeLabel:SetText("Icon Style")
+    local iconTypeLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    iconTypeLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, -10)
+    iconTypeLabel:SetText("Icon Type")
 
-    local iconTypeDropdown = CreateFrame("Frame", "TargetIconTypeDropdown", optionsFrame, "UIDropDownMenuTemplate")
+    local iconTypeDropdown = CreateFrame("Frame", "TargetIconTypeDropdown", leftColumn, "UIDropDownMenuTemplate")
     iconTypeDropdown:SetPoint("TOPLEFT", iconTypeLabel, "BOTTOMLEFT", -15, -10)
     UIDropDownMenu_SetWidth(iconTypeDropdown, 150)
 
-    local function OnClick(self)
+    local function OnIconTypeClick(self)
         UIDropDownMenu_SetSelectedID(iconTypeDropdown, self:GetID())
         Target_Settings.iconType = self.value
         -- Update player textures to use the new icon type
@@ -250,16 +368,17 @@ function initializeUI()
             end
         end
         updateNamePlates()
+        SaveProfileSettings()
     end
 
-    local function Initialize(self, level)
+    local function InitializeIconTypeDropdown(self, level)
         local info = UIDropDownMenu_CreateInfo()
         local index = 1
         for k, v in pairs(iconTypes) do
             info = UIDropDownMenu_CreateInfo()
             info.text = k
             info.value = k
-            info.func = OnClick
+            info.func = OnIconTypeClick
             info.checked = (Target_Settings.iconType == k)
             UIDropDownMenu_AddButton(info, level)
             if info.checked then
@@ -269,15 +388,15 @@ function initializeUI()
         end
     end
 
-    UIDropDownMenu_Initialize(iconTypeDropdown, Initialize)
-    lastControl = iconTypeDropdown
+    UIDropDownMenu_Initialize(iconTypeDropdown, InitializeIconTypeDropdown)
+    lastControlLeft = iconTypeDropdown
 
     -- X Offset Slider
-    local xSliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    xSliderLabel:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 15, -20)
+    local xSliderLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    xSliderLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, -20)
     xSliderLabel:SetText("X Offset")
 
-    local xSlider = CreateFrame("Slider", "TargetXSlider", optionsFrame, "OptionsSliderTemplate")
+    local xSlider = CreateFrame("Slider", "TargetXSlider", leftColumn, "OptionsSliderTemplate")
     xSlider:SetPoint("TOPLEFT", xSliderLabel, "BOTTOMLEFT", 0, -10)
     xSlider:SetMinMaxValues(-200, 200)
     xSlider:SetValue(Target_Settings.xValue)
@@ -285,7 +404,7 @@ function initializeUI()
     xSlider:SetObeyStepOnDrag(true)
     xSlider:SetWidth(200)
 
-    local xSliderValue = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local xSliderValue = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     xSliderValue:SetPoint("LEFT", xSlider, "RIGHT", 10, 0)
     xSliderValue:SetText(floor(Target_Settings.xValue))
 
@@ -294,16 +413,17 @@ function initializeUI()
         xSliderValue:SetText(value)
         Target_Settings.xValue = value
         updateNamePlates()
+        SaveProfileSettings()
     end)
     xSlider:Show()
-    lastControl = xSlider
+    lastControlLeft = xSlider
 
     -- Y Offset Slider
-    local ySliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    ySliderLabel:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -20)
+    local ySliderLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    ySliderLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, -20)
     ySliderLabel:SetText("Y Offset")
 
-    local ySlider = CreateFrame("Slider", "TargetYSlider", optionsFrame, "OptionsSliderTemplate")
+    local ySlider = CreateFrame("Slider", "TargetYSlider", leftColumn, "OptionsSliderTemplate")
     ySlider:SetPoint("TOPLEFT", ySliderLabel, "BOTTOMLEFT", 0, -10)
     ySlider:SetMinMaxValues(-200, 200)
     ySlider:SetValue(Target_Settings.yValue)
@@ -311,7 +431,7 @@ function initializeUI()
     ySlider:SetObeyStepOnDrag(true)
     ySlider:SetWidth(200)
 
-    local ySliderValue = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local ySliderValue = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     ySliderValue:SetPoint("LEFT", ySlider, "RIGHT", 10, 0)
     ySliderValue:SetText(floor(Target_Settings.yValue))
 
@@ -320,16 +440,17 @@ function initializeUI()
         ySliderValue:SetText(value)
         Target_Settings.yValue = value
         updateNamePlates()
+        SaveProfileSettings()
     end)
     ySlider:Show()
-    lastControl = ySlider
+    lastControlLeft = ySlider
 
     -- Icon Size Slider
-    local sizeSliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    sizeSliderLabel:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -20)
+    local sizeSliderLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    sizeSliderLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, -20)
     sizeSliderLabel:SetText("Icon Size")
 
-    local sizeSlider = CreateFrame("Slider", "TargetSizeSlider", optionsFrame, "OptionsSliderTemplate")
+    local sizeSlider = CreateFrame("Slider", "TargetSizeSlider", leftColumn, "OptionsSliderTemplate")
     sizeSlider:SetPoint("TOPLEFT", sizeSliderLabel, "BOTTOMLEFT", 0, -10)
     sizeSlider:SetMinMaxValues(10, 100)
     sizeSlider:SetValue(Target_Settings.iconSize)
@@ -337,7 +458,7 @@ function initializeUI()
     sizeSlider:SetObeyStepOnDrag(true)
     sizeSlider:SetWidth(200)
 
-    local sizeSliderValue = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local sizeSliderValue = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     sizeSliderValue:SetPoint("LEFT", sizeSlider, "RIGHT", 10, 0)
     sizeSliderValue:SetText(floor(Target_Settings.iconSize))
 
@@ -352,16 +473,17 @@ function initializeUI()
             end
         end
         updateNamePlates()
+        SaveProfileSettings()
     end)
     sizeSlider:Show()
-    lastControl = sizeSlider
+    lastControlLeft = sizeSlider
 
     -- Icon Opacity Slider
-    local opacitySliderLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    opacitySliderLabel:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -20)
+    local opacitySliderLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    opacitySliderLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, -20)
     opacitySliderLabel:SetText("Icon Opacity")
 
-    local opacitySlider = CreateFrame("Slider", "TargetOpacitySlider", optionsFrame, "OptionsSliderTemplate")
+    local opacitySlider = CreateFrame("Slider", "TargetOpacitySlider", leftColumn, "OptionsSliderTemplate")
     opacitySlider:SetPoint("TOPLEFT", opacitySliderLabel, "BOTTOMLEFT", 0, -10)
     opacitySlider:SetMinMaxValues(0.1, 1.0)
     opacitySlider:SetValue(Target_Settings.iconOpacity)
@@ -369,7 +491,7 @@ function initializeUI()
     opacitySlider:SetObeyStepOnDrag(true)
     opacitySlider:SetWidth(200)
 
-    local opacitySliderValue = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local opacitySliderValue = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     opacitySliderValue:SetPoint("LEFT", opacitySlider, "RIGHT", 10, 0)
     opacitySliderValue:SetText(string.format("%.1f", Target_Settings.iconOpacity))
 
@@ -384,11 +506,20 @@ function initializeUI()
             end
         end
         updateNamePlates()
+        SaveProfileSettings()
     end)
     opacitySlider:Show()
-    lastControl = opacitySlider
+    lastControlLeft = opacitySlider
+
+    -- Right Column Controls
+    local lastControlRight = nil
 
     -- Toggle options for different game modes
+    local toggleOptionsTitle = rightColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    toggleOptionsTitle:SetPoint("TOPLEFT", 0, 0)
+    toggleOptionsTitle:SetText("Game Mode Toggles")
+    lastControlRight = toggleOptionsTitle
+
     local checkboxData = {
         { label = "Enable in Open World", setting = "enableInOpenWorld" },
         { label = "Enable in Arena", setting = "enableInArena" },
@@ -399,8 +530,12 @@ function initializeUI()
     }
 
     for i, data in ipairs(checkboxData) do
-        local checkbox = CreateFrame("CheckButton", "TargetCheckbox" .. i, optionsFrame, "UICheckButtonTemplate")
-        checkbox:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -20)
+        local checkbox = CreateFrame("CheckButton", "TargetCheckbox" .. i, rightColumn, "UICheckButtonTemplate")
+        if lastControlRight then
+            checkbox:SetPoint("TOPLEFT", lastControlRight, "BOTTOMLEFT", 0, -10)
+        else
+            checkbox:SetPoint("TOPLEFT", toggleOptionsTitle, "BOTTOMLEFT", 0, -20)
+        end
         checkbox.text = checkbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         checkbox.text:SetPoint("LEFT", checkbox, "RIGHT", 0, 1)
         checkbox.text:SetText(data.label)
@@ -408,26 +543,28 @@ function initializeUI()
         checkbox:SetScript("OnClick", function(self)
             Target_Settings[data.setting] = self:GetChecked()
             updateNamePlates()
+            SaveProfileSettings()
         end)
-        lastControl = checkbox
+        lastControlRight = checkbox
     end
 
     -- Donation and Reload UI Buttons
     local buttonContainer = CreateFrame("Frame", nil, optionsFrame)
-    buttonContainer:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -30)
     buttonContainer:SetSize(1, 1)
+    buttonContainer:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 20)
 
     -- Reload UI Button
     local reloadButton = CreateFrame("Button", "TargetReloadButton", buttonContainer, "UIPanelButtonTemplate")
     reloadButton:SetSize(120, 25)
     reloadButton:SetText("Reload UI")
+    reloadButton:SetPoint("LEFT", buttonContainer, "CENTER", -65, 0)
     reloadButton:SetScript("OnClick", function() ReloadUI() end)
-    reloadButton:SetPoint("LEFT", buttonContainer, "LEFT", 0, 0)
 
     -- Donation Button
     local donateButton = CreateFrame("Button", "TargetDonateButton", buttonContainer, "UIPanelButtonTemplate")
     donateButton:SetSize(120, 25)
     donateButton:SetText("Donate")
+    donateButton:SetPoint("LEFT", reloadButton, "RIGHT", 10, 0)
     donateButton:SetScript("OnClick", function()
         local popup = CreateFrame("Frame", "DonatePopup", UIParent, "BasicFrameTemplateWithInset")
         popup:SetSize(350, 150)
@@ -474,7 +611,6 @@ function initializeUI()
         local closeButton = CreateFrame("Button", nil, popup, "UIPanelCloseButton")
         closeButton:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -5, -5)
     end)
-    donateButton:SetPoint("LEFT", reloadButton, "RIGHT", 10, 0)
 
     -- Register the options frame
     if Settings and Settings.RegisterCanvasLayoutCategory then
@@ -482,5 +618,24 @@ function initializeUI()
         Settings.RegisterAddOnCategory(category)
     else
         InterfaceOptions_AddCategory(optionsFrame)
+    end
+
+    -- Show/Hide function when the options frame is opened/closed
+    optionsFrame:SetScript("OnShow", function(self)
+        self:Show()
+    end)
+
+    optionsFrame:SetScript("OnHide", function(self)
+        self:Hide()
+    end)
+end
+
+-- Hook to Interface Options for showing the frame
+SLASH_TARGETOPTIONS1 = "/targetoptions"
+SlashCmdList["TARGETOPTIONS"] = function()
+    if not TargetOptionsFrame:IsShown() then
+        TargetOptionsFrame:Show()
+    else
+        TargetOptionsFrame:Hide()
     end
 end
