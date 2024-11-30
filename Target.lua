@@ -1,4 +1,6 @@
+-- Target.lua
 -- Adding Profile Management, Enhancing UI Organization, and Adding More Features
+
 local addonName, addon = ...
 
 -- Default values for settings
@@ -14,6 +16,7 @@ local defaultSettings = {
     enableInRaid = true,
     enableInDungeon = true,  -- For dungeons
     enableInDelves = true,   -- For new delves
+    showOverlay = true,      -- Added this line
 }
 
 local profiles = {
@@ -511,6 +514,33 @@ function initializeUI()
     opacitySlider:Show()
     lastControlLeft = opacitySlider
 
+    -- Show Overlay Checkbox
+    local overlayCheckbox = CreateFrame("CheckButton", "TargetShowOverlayCheckbox", leftColumn, "UICheckButtonTemplate")
+    overlayCheckbox:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, -20)
+    overlayCheckbox.text = overlayCheckbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    overlayCheckbox.text:SetPoint("LEFT", overlayCheckbox, "RIGHT", 0, 1)
+    overlayCheckbox.text:SetText("Show PvP Rating Overlay")
+    overlayCheckbox:SetChecked(Target_Settings.showOverlay)
+    overlayCheckbox:SetScript("OnClick", function(self)
+        Target_Settings.showOverlay = self:GetChecked()
+        if Target_Settings.showOverlay then
+            if TargetOverlayFrame then
+                TargetOverlayFrame:Show()
+            else
+                -- If the overlay hasn't been created yet, create it
+                if addon.createOverlayFrame then
+                    addon.createOverlayFrame()
+                end
+            end
+        else
+            if TargetOverlayFrame then
+                TargetOverlayFrame:Hide()
+            end
+        end
+        SaveProfileSettings()
+    end)
+    lastControlLeft = overlayCheckbox
+
     -- Right Column Controls
     local lastControlRight = nil
 
@@ -639,3 +669,6 @@ SlashCmdList["TARGETOPTIONS"] = function()
         TargetOptionsFrame:Hide()
     end
 end
+
+-- Expose the addon table to allow accessing functions from other files
+_G[addonName] = addon
