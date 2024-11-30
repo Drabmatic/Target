@@ -246,16 +246,19 @@ frame:SetScript("OnEvent", OnEvent)
 
 -- UI Panel for Enhanced Settings
 function initializeUI()
-    if TargetOptionsFrame then
-        TargetOptionsFrame:Hide() -- Hide previous instance if it exists
+    -- Check if the settings frame is already created to prevent duplicate registrations
+    if TargetOptionsFrame and TargetOptionsFrame:IsObjectType("Frame") then
+        return -- Already created and registered
     end
 
+    -- Create the settings frame
     local optionsFrame = CreateFrame("Frame", "TargetOptionsFrame", UIParent, "BackdropTemplate")
     optionsFrame.name = addonName
     optionsFrame:SetSize(600, 500) -- Adjusted size
     optionsFrame:SetPoint("CENTER")
     optionsFrame:Hide() -- Start hidden, show only when options are opened
 
+    -- Title
     local title = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", optionsFrame, "TOP", 0, -16)
     title:SetText("Target Addon Settings")
@@ -642,7 +645,7 @@ function initializeUI()
         closeButton:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -5, -5)
     end)
 
-    -- Register the options frame
+    -- Register the settings panel with Interface Options
     if Settings and Settings.RegisterCanvasLayoutCategory then
         local category = Settings.RegisterCanvasLayoutCategory(optionsFrame, addonName)
         Settings.RegisterAddOnCategory(category)
