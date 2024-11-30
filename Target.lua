@@ -253,7 +253,7 @@ function initializeUI()
 
     -- Create the settings frame
     local optionsFrame = CreateFrame("Frame", "TargetOptionsFrame", UIParent, "BackdropTemplate")
-    optionsFrame.name = addonName
+    optionsFrame.name = "ClassTarget"  -- Changed from addonName to "ClassTarget"
     optionsFrame:SetSize(600, 500) -- Adjusted size
     optionsFrame:SetPoint("CENTER")
     optionsFrame:Hide() -- Start hidden, show only when options are opened
@@ -261,7 +261,7 @@ function initializeUI()
     -- Title
     local title = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", optionsFrame, "TOP", 0, -16)
-    title:SetText("Target Addon Settings")
+    title:SetText("ClassTarget Addon Settings")  -- Updated title text
 
     -- Create a container frame
     local container = CreateFrame("Frame", nil, optionsFrame)
@@ -647,7 +647,7 @@ function initializeUI()
 
     -- Register the settings panel with Interface Options
     if Settings and Settings.RegisterCanvasLayoutCategory then
-        local category = Settings.RegisterCanvasLayoutCategory(optionsFrame, addonName)
+        local category = Settings.RegisterCanvasLayoutCategory(optionsFrame, "ClassTarget")  -- Changed from addonName to "ClassTarget"
         Settings.RegisterAddOnCategory(category)
     else
         InterfaceOptions_AddCategory(optionsFrame)
