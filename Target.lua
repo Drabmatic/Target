@@ -17,6 +17,7 @@ local defaultSettings = {
     enableInDungeon = true,  -- For dungeons
     enableInDelves = true,   -- For new delves
     showOverlay = true,      -- Added this line
+    layout = "Horizontal",   -- New setting for layout
 }
 
 local profiles = {
@@ -28,6 +29,12 @@ local iconTypes = {
     ["Default"] = { suffix = "", useClassColor = false },
     ["Circle"] = { suffix = "-circle", useClassColor = false },
     ["Class Color"] = { suffix = "-color", useClassColor = true }
+}
+
+local layoutTypes = {
+    ["Horizontal"] = "Horizontal",
+    ["Vertical"] = "Vertical",
+    ["Grid"] = "Grid"
 }
 
 local frame = CreateFrame("Frame")
@@ -146,6 +153,7 @@ local function updateNamePlates()
     end
 
     local currentCounts = {}
+    local layout = Target_Settings.layout
     local xOffset, yOffset = Target_Settings.xValue, Target_Settings.yValue
 
     for unitId, player in pairs(players) do
@@ -161,8 +169,26 @@ local function updateNamePlates()
                     nameplateFrame = CreateFrame("Frame", nil, nameplate)
                     nameplateFrames[targetGUID] = nameplateFrame
                 end
-                nameplateFrame:SetSize(width * targetCount, height)
-                nameplateFrame:SetPoint("BOTTOM", nameplate, "TOP", xOffset, yOffset)
+                nameplateFrame:ClearAllPoints()
+
+                if layout == "Horizontal" then
+                    nameplateFrame:SetSize(width * targetCount, height)
+                    nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
+                elseif layout == "Vertical" then
+                    nameplateFrame:SetSize(width, height * targetCount)
+                    nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
+                elseif layout == "Grid" then
+                    -- Calculate grid size (e.g., 2x3 for 5 buttons)
+                    local columns = math.ceil(math.sqrt(targetCount))
+                    local rows = math.ceil(targetCount / columns)
+                    nameplateFrame:SetSize(width * columns, height * rows)
+                    nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
+                else
+                    -- Default to Horizontal if unknown layout
+                    nameplateFrame:SetSize(width * targetCount, height)
+                    nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
+                end
+
                 nameplateFrame:Show()
 
                 if not currentCounts[targetGUID] then
@@ -171,7 +197,17 @@ local function updateNamePlates()
                 currentCounts[targetGUID] = currentCounts[targetGUID] + 1
 
                 player.texture:SetParent(nameplateFrame)
-                player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", (currentCounts[targetGUID] - 1) * width, 0)
+
+                if layout == "Horizontal" then
+                    player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", (currentCounts[targetGUID] - 1) * width, 0)
+                elseif layout == "Vertical" then
+                    player.texture:SetPoint("TOP", nameplateFrame, "TOP", 0, -(currentCounts[targetGUID] - 1) * height)
+                elseif layout == "Grid" then
+                    local col = (currentCounts[targetGUID] - 1) % math.ceil(math.sqrt(targetCount))
+                    local row = math.floor((currentCounts[targetGUID] - 1) / math.ceil(math.sqrt(targetCount)))
+                    player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", col * width, -row * height)
+                end
+
                 player.texture:Show()
             end
         end
@@ -397,9 +433,46 @@ function initializeUI()
     UIDropDownMenu_Initialize(iconTypeDropdown, InitializeIconTypeDropdown)
     lastControlLeft = iconTypeDropdown
 
+    -- Layout Dropdown
+    local layoutDropdownLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    layoutDropdownLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, -20)
+    layoutDropdownLabel:SetText("Layout")
+
+    local layoutDropdown = CreateFrame("Frame", "TargetLayoutDropdown", leftColumn, "UIDropDownMenuTemplate")
+    layoutDropdown:SetPoint("TOPLEFT", layoutDropdownLabel, "BOTTOMLEFT", -15, -10)
+    UIDropDownMenu_SetWidth(layoutDropdown, 150)
+
+local function OnLayoutClick(self)
+    UIDropDownMenu_SetSelectedID(layoutDropdown, self:GetID())
+    Target_Settings.layout = self.value
+    updateNamePlates()
+    addon.arrangeArenaButtons()  -- Rearrange buttons based on new layout
+    SaveProfileSettings()
+    end
+
+    local function InitializeLayoutDropdown(self, level)
+        local info = UIDropDownMenu_CreateInfo()
+        local index = 1
+        for k, v in pairs(layoutTypes) do
+            info = UIDropDownMenu_CreateInfo()
+            info.text = k
+            info.value = k
+            info.func = OnLayoutClick
+            info.checked = (Target_Settings.layout == k)
+            UIDropDownMenu_AddButton(info, level)
+            if info.checked then
+                UIDropDownMenu_SetSelectedID(layoutDropdown, index)
+            end
+            index = index + 1
+        end
+    end
+
+    UIDropDownMenu_Initialize(layoutDropdown, InitializeLayoutDropdown)
+    lastControlLeft = layoutDropdown
+
     -- X Offset Slider
     local xSliderLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    xSliderLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, -20)
+    xSliderLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, -20)
     xSliderLabel:SetText("X Offset")
 
     local xSlider = CreateFrame("Slider", "TargetXSlider", leftColumn, "OptionsSliderTemplate")
