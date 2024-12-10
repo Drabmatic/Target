@@ -1,9 +1,17 @@
 -- Target.lua
--- Adding Profile Management, Enhancing UI Organization, and Adding More Features
 
 local addonName, addon = ...
 
--- Default values for settings
+local borderStyles = {
+    ["Default"] = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    ["Thin"] = "Interface\\Tooltips\\UI-Tooltip-Border",
+    ["None"] = ""
+}
+
+function addon.ApplyOverlayAppearanceChanges()
+    -- No dynamic changes, we recreate the overlay frame when needed.
+end
+
 local defaultSettings = {
     xValue = 0,
     yValue = 0,
@@ -14,10 +22,12 @@ local defaultSettings = {
     enableInArena = true,
     enableInBattleground = true,
     enableInRaid = true,
-    enableInDungeon = true,  -- For dungeons
-    enableInDelves = true,   -- For new delves
-    showOverlay = true,      -- Added this line
-    layout = "Horizontal",   -- New setting for layout
+    enableInDungeon = true,
+    enableInDelves = true,
+    showOverlay = true,
+    layout = "Horizontal",
+    overlayLayout = "Horizontal",
+    overlayBorderStyle = "Interface\\DialogFrame\\UI-DialogBox-Border",
 }
 
 local profiles = {
@@ -47,28 +57,23 @@ frame:RegisterUnitEvent("UNIT_TARGET", "player", "party1", "party2", "party3", "
 
 local players = {}
 local nameplateFrames = {}
-local updateTicker -- This will periodically update icons
+local updateTicker
 
--- Function to save settings persistently
 local function SaveProfileSettings()
     Target_Profiles[currentProfile] = CopyTable(Target_Settings)
     Target_CurrentProfile = currentProfile
 end
 
--- Function to generate a unique profile name
 local function generateUniqueProfileName(baseName)
     local counter = 1
     local uniqueName = baseName
-
     while profiles[uniqueName] do
         uniqueName = baseName .. " " .. counter
         counter = counter + 1
     end
-
     return uniqueName
 end
 
--- Function to delete a profile
 local function deleteProfile(profileName)
     if profileName and profiles[profileName] and profileName ~= "Default" then
         profiles[profileName] = nil
@@ -80,7 +85,6 @@ local function deleteProfile(profileName)
     end
 end
 
--- Function to create or update a player object
 local function createPlayer(unitId)
     local player = players[unitId] or {}
     players[unitId] = player
@@ -102,7 +106,7 @@ local function createPlayer(unitId)
     local iconSize = tonumber(Target_Settings.iconSize) or 32
     player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
     player.texture:SetSize(iconSize, iconSize)
-    player.texture:SetAlpha(Target_Settings.iconOpacity) -- Set opacity
+    player.texture:SetAlpha(Target_Settings.iconOpacity)
 
     return player
 end
@@ -136,17 +140,16 @@ local function isAddonEnabled()
         arena = Target_Settings.enableInArena,
         pvp = Target_Settings.enableInBattleground,
         raid = Target_Settings.enableInRaid,
-        party = Target_Settings.enableInDungeon,  -- For dungeons
-        delves = Target_Settings.enableInDelves   -- New Delve feature
+        party = Target_Settings.enableInDungeon,
+        delves = Target_Settings.enableInDelves
     }
     return zoneChecks[zoneType] or false
 end
 
--- Update Nameplates (run continuously on a timer)
 local function updateNamePlates()
     if not isAddonEnabled() then
-        for _, frame in pairs(nameplateFrames) do
-            frame:Hide()
+        for _, f in pairs(nameplateFrames) do
+            f:Hide()
         end
         wipe(nameplateFrames)
         return
@@ -178,13 +181,11 @@ local function updateNamePlates()
                     nameplateFrame:SetSize(width, height * targetCount)
                     nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
                 elseif layout == "Grid" then
-                    -- Calculate grid size (e.g., 2x3 for 5 buttons)
                     local columns = math.ceil(math.sqrt(targetCount))
                     local rows = math.ceil(targetCount / columns)
                     nameplateFrame:SetSize(width * columns, height * rows)
                     nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
                 else
-                    -- Default to Horizontal if unknown layout
                     nameplateFrame:SetSize(width * targetCount, height)
                     nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
                 end
@@ -215,96 +216,37 @@ local function updateNamePlates()
 end
 
 local function clearNamePlates()
-    -- Only clear hidden nameplates, leave the visible ones intact
-    for _, frame in pairs(nameplateFrames) do
-        frame:Hide()
+    for _, f in pairs(nameplateFrames) do
+        f:Hide()
     end
 end
 
--- Function to refresh icons more frequently using a ticker
 local function startTicker()
-    if updateTicker then
-        updateTicker:Cancel()  -- Cancel any existing ticker to avoid multiple ticks
-    end
-    updateTicker = C_Timer.NewTicker(0.1, updateNamePlates)  -- Adjust this value for more frequent updates
-end
-
-local function stopTicker()
     if updateTicker then
         updateTicker:Cancel()
     end
+    updateTicker = C_Timer.NewTicker(0.1, updateNamePlates)
 end
 
-local function OnEvent(self, event, ...)
-    if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
-        initializePlayers()
-        clearNamePlates()
-        updateNamePlates()  -- Initial nameplate update
-        startTicker()  -- Start continuous updates
-    elseif event == "PLAYER_TARGET_CHANGED" then
-        clearNamePlates()
-        updateNamePlates()
-    elseif event == "UNIT_TARGET" then
-        local unit = ...
-        if unit and players[unit] then
-            -- Only update if the unit is a player or party member we're tracking
-            clearNamePlates()
-            updateNamePlates()
-        end
-    elseif event == "ADDON_LOADED" and ... == addonName then
-        if not Target_Settings then
-            Target_Settings = CopyTable(defaultSettings)
-        end
-        if not Target_Profiles then
-            Target_Profiles = { ["Default"] = CopyTable(defaultSettings) }
-        end
-        if not Target_CurrentProfile then
-            Target_CurrentProfile = "Default"
-        end
-
-        -- Load the current profile
-        profiles = Target_Profiles
-        currentProfile = Target_CurrentProfile
-        Target_Settings = profiles[currentProfile]
-
-        initializeUI()
-    elseif event == "PLAYER_LOGIN" then
-        if not Target_Settings then
-            Target_Settings = CopyTable(defaultSettings)
-        end
-        initializeUI()
-        updateNamePlates()
-        startTicker()  -- Start the periodic updates
-    end
-end
-
-frame:SetScript("OnEvent", OnEvent)
-
--- UI Panel for Enhanced Settings
 function initializeUI()
-    -- Check if the settings frame is already created to prevent duplicate registrations
     if TargetOptionsFrame and TargetOptionsFrame:IsObjectType("Frame") then
-        return -- Already created and registered
+        return
     end
 
-    -- Create the settings frame
     local optionsFrame = CreateFrame("Frame", "TargetOptionsFrame", UIParent, "BackdropTemplate")
-    optionsFrame.name = "ClassTarget"  -- Changed from addonName to "ClassTarget"
-    optionsFrame:SetSize(600, 500) -- Adjusted size
+    optionsFrame.name = "ClassTarget"
+    optionsFrame:SetSize(700, 600)
     optionsFrame:SetPoint("CENTER")
-    optionsFrame:Hide() -- Start hidden, show only when options are opened
+    optionsFrame:Hide()
 
-    -- Title
     local title = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", optionsFrame, "TOP", 0, -16)
-    title:SetText("ClassTarget Addon Settings")  -- Updated title text
+    title:SetText("ClassTarget Addon Settings")
 
-    -- Create a container frame
     local container = CreateFrame("Frame", nil, optionsFrame)
     container:SetSize(optionsFrame:GetWidth() - 40, optionsFrame:GetHeight() - 80)
     container:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -50)
 
-    -- Create left and right columns
     local leftColumn = CreateFrame("Frame", nil, container)
     leftColumn:SetSize((container:GetWidth() - 20) / 2, container:GetHeight())
     leftColumn:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
@@ -313,18 +255,18 @@ function initializeUI()
     rightColumn:SetSize((container:GetWidth() - 20) / 2, container:GetHeight())
     rightColumn:SetPoint("TOPLEFT", leftColumn, "TOPRIGHT", 20, 0)
 
-    -- Left Column Controls
+    local verticalSpacing = -5
+    local sectionSpacing = -10
     local lastControlLeft = nil
 
-    -- Profiles Section
+    -- Profiles
     local profileTitle = leftColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     profileTitle:SetPoint("TOPLEFT", 0, 0)
     profileTitle:SetText("Profiles")
     lastControlLeft = profileTitle
 
-    -- Dropdown to select profile
     local profileDropdown = CreateFrame("Frame", "TargetProfileDropdown", leftColumn, "UIDropDownMenuTemplate")
-    profileDropdown:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", -15, -5)
+    profileDropdown:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", -15, verticalSpacing)
     UIDropDownMenu_SetWidth(profileDropdown, 150)
 
     local function OnClick(self)
@@ -333,9 +275,10 @@ function initializeUI()
         Target_Settings = CopyTable(profiles[currentProfile])
         updateNamePlates()
         SaveProfileSettings()
+        addon.ApplyOverlayAppearanceChanges()
     end
 
-    local function Initialize(self, level)
+    local function InitializeProfileDropdown(self, level)
         local info = UIDropDownMenu_CreateInfo()
         local index = 1
         for k, v in pairs(profiles) do
@@ -352,60 +295,57 @@ function initializeUI()
         end
     end
 
-    UIDropDownMenu_Initialize(profileDropdown, Initialize)
+    UIDropDownMenu_Initialize(profileDropdown, InitializeProfileDropdown)
     lastControlLeft = profileDropdown
 
-    -- Create New Profile Button
     local createProfileButton = CreateFrame("Button", "CreateProfileButton", leftColumn, "UIPanelButtonTemplate")
     createProfileButton:SetSize(120, 25)
     createProfileButton:SetText("Create Profile")
-    createProfileButton:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, -10)
+    createProfileButton:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, verticalSpacing)
     createProfileButton:SetScript("OnClick", function()
         local newProfileName = generateUniqueProfileName("New Profile")
         profiles[newProfileName] = CopyTable(Target_Settings)
         currentProfile = newProfileName
         Target_Settings = profiles[currentProfile]
-        UIDropDownMenu_Initialize(profileDropdown, Initialize)
+        UIDropDownMenu_Initialize(profileDropdown, InitializeProfileDropdown)
         updateNamePlates()
         SaveProfileSettings()
+        addon.ApplyOverlayAppearanceChanges()
     end)
     lastControlLeft = createProfileButton
 
-    -- Delete Profile Button
     local deleteProfileButton = CreateFrame("Button", "DeleteProfileButton", leftColumn, "UIPanelButtonTemplate")
     deleteProfileButton:SetSize(120, 25)
     deleteProfileButton:SetText("Delete Profile")
     deleteProfileButton:SetPoint("LEFT", createProfileButton, "RIGHT", 10, 0)
     deleteProfileButton:SetScript("OnClick", function()
         deleteProfile(currentProfile)
-        UIDropDownMenu_Initialize(profileDropdown, Initialize)
+        UIDropDownMenu_Initialize(profileDropdown, InitializeProfileDropdown)
         updateNamePlates()
+        addon.ApplyOverlayAppearanceChanges()
     end)
-    -- No need to update lastControlLeft since it's on the same row
 
-    -- General Settings Title
+    -- General Settings
     local generalSettingsTitle = leftColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    generalSettingsTitle:SetPoint("TOPLEFT", createProfileButton, "BOTTOMLEFT", 0, -20)
+    generalSettingsTitle:SetPoint("TOPLEFT", createProfileButton, "BOTTOMLEFT", 0, sectionSpacing)
     generalSettingsTitle:SetText("General Settings")
     lastControlLeft = generalSettingsTitle
 
-    -- Icon Type Dropdown
     local iconTypeLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    iconTypeLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, -10)
+    iconTypeLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, verticalSpacing)
     iconTypeLabel:SetText("Icon Type")
 
     local iconTypeDropdown = CreateFrame("Frame", "TargetIconTypeDropdown", leftColumn, "UIDropDownMenuTemplate")
-    iconTypeDropdown:SetPoint("TOPLEFT", iconTypeLabel, "BOTTOMLEFT", -15, -10)
+    iconTypeDropdown:SetPoint("TOPLEFT", iconTypeLabel, "BOTTOMLEFT", -15, verticalSpacing)
     UIDropDownMenu_SetWidth(iconTypeDropdown, 150)
 
     local function OnIconTypeClick(self)
         UIDropDownMenu_SetSelectedID(iconTypeDropdown, self:GetID())
         Target_Settings.iconType = self.value
-        -- Update player textures to use the new icon type
         for _, player in pairs(players) do
             if player.texture then
-                local iconType = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
-                local classImage = player.class .. iconType.suffix .. ".tga"
+                local it = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
+                local classImage = player.class .. it.suffix .. ".tga"
                 player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
             end
         end
@@ -433,21 +373,19 @@ function initializeUI()
     UIDropDownMenu_Initialize(iconTypeDropdown, InitializeIconTypeDropdown)
     lastControlLeft = iconTypeDropdown
 
-    -- Layout Dropdown
     local layoutDropdownLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    layoutDropdownLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, -20)
-    layoutDropdownLabel:SetText("Layout")
+    layoutDropdownLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, verticalSpacing)
+    layoutDropdownLabel:SetText("Target Icons Layout")
 
     local layoutDropdown = CreateFrame("Frame", "TargetLayoutDropdown", leftColumn, "UIDropDownMenuTemplate")
-    layoutDropdown:SetPoint("TOPLEFT", layoutDropdownLabel, "BOTTOMLEFT", -15, -10)
+    layoutDropdown:SetPoint("TOPLEFT", layoutDropdownLabel, "BOTTOMLEFT", -15, verticalSpacing)
     UIDropDownMenu_SetWidth(layoutDropdown, 150)
 
-local function OnLayoutClick(self)
-    UIDropDownMenu_SetSelectedID(layoutDropdown, self:GetID())
-    Target_Settings.layout = self.value
-    updateNamePlates()
-    addon.arrangeArenaButtons()  -- Rearrange buttons based on new layout
-    SaveProfileSettings()
+    local function OnLayoutClick(self)
+        UIDropDownMenu_SetSelectedID(layoutDropdown, self:GetID())
+        Target_Settings.layout = self.value
+        updateNamePlates()
+        SaveProfileSettings()
     end
 
     local function InitializeLayoutDropdown(self, level)
@@ -470,132 +408,17 @@ local function OnLayoutClick(self)
     UIDropDownMenu_Initialize(layoutDropdown, InitializeLayoutDropdown)
     lastControlLeft = layoutDropdown
 
-    -- X Offset Slider
-    local xSliderLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    xSliderLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, -20)
-    xSliderLabel:SetText("X Offset")
+    -- Arena Overlay Settings
+    local arenaOverlayTitle = leftColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    arenaOverlayTitle:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, sectionSpacing)
+    arenaOverlayTitle:SetText("Arena Overlay Settings")
+    lastControlLeft = arenaOverlayTitle
 
-    local xSlider = CreateFrame("Slider", "TargetXSlider", leftColumn, "OptionsSliderTemplate")
-    xSlider:SetPoint("TOPLEFT", xSliderLabel, "BOTTOMLEFT", 0, -10)
-    xSlider:SetMinMaxValues(-200, 200)
-    xSlider:SetValue(Target_Settings.xValue)
-    xSlider:SetValueStep(1)
-    xSlider:SetObeyStepOnDrag(true)
-    xSlider:SetWidth(200)
-
-    local xSliderValue = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    xSliderValue:SetPoint("LEFT", xSlider, "RIGHT", 10, 0)
-    xSliderValue:SetText(floor(Target_Settings.xValue))
-
-    xSlider:SetScript("OnValueChanged", function(self, value)
-        value = floor(value + 0.5)
-        xSliderValue:SetText(value)
-        Target_Settings.xValue = value
-        updateNamePlates()
-        SaveProfileSettings()
-    end)
-    xSlider:Show()
-    lastControlLeft = xSlider
-
-    -- Y Offset Slider
-    local ySliderLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    ySliderLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, -20)
-    ySliderLabel:SetText("Y Offset")
-
-    local ySlider = CreateFrame("Slider", "TargetYSlider", leftColumn, "OptionsSliderTemplate")
-    ySlider:SetPoint("TOPLEFT", ySliderLabel, "BOTTOMLEFT", 0, -10)
-    ySlider:SetMinMaxValues(-200, 200)
-    ySlider:SetValue(Target_Settings.yValue)
-    ySlider:SetValueStep(1)
-    ySlider:SetObeyStepOnDrag(true)
-    ySlider:SetWidth(200)
-
-    local ySliderValue = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    ySliderValue:SetPoint("LEFT", ySlider, "RIGHT", 10, 0)
-    ySliderValue:SetText(floor(Target_Settings.yValue))
-
-    ySlider:SetScript("OnValueChanged", function(self, value)
-        value = floor(value + 0.5)
-        ySliderValue:SetText(value)
-        Target_Settings.yValue = value
-        updateNamePlates()
-        SaveProfileSettings()
-    end)
-    ySlider:Show()
-    lastControlLeft = ySlider
-
-    -- Icon Size Slider
-    local sizeSliderLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    sizeSliderLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, -20)
-    sizeSliderLabel:SetText("Icon Size")
-
-    local sizeSlider = CreateFrame("Slider", "TargetSizeSlider", leftColumn, "OptionsSliderTemplate")
-    sizeSlider:SetPoint("TOPLEFT", sizeSliderLabel, "BOTTOMLEFT", 0, -10)
-    sizeSlider:SetMinMaxValues(10, 100)
-    sizeSlider:SetValue(Target_Settings.iconSize)
-    sizeSlider:SetValueStep(1)
-    sizeSlider:SetObeyStepOnDrag(true)
-    sizeSlider:SetWidth(200)
-
-    local sizeSliderValue = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    sizeSliderValue:SetPoint("LEFT", sizeSlider, "RIGHT", 10, 0)
-    sizeSliderValue:SetText(floor(Target_Settings.iconSize))
-
-    sizeSlider:SetScript("OnValueChanged", function(self, value)
-        value = floor(value + 0.5)
-        sizeSliderValue:SetText(value)
-        Target_Settings.iconSize = value
-        -- Update the size of all player textures
-        for _, player in pairs(players) do
-            if player.texture then
-                player.texture:SetSize(value, value)
-            end
-        end
-        updateNamePlates()
-        SaveProfileSettings()
-    end)
-    sizeSlider:Show()
-    lastControlLeft = sizeSlider
-
-    -- Icon Opacity Slider
-    local opacitySliderLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    opacitySliderLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, -20)
-    opacitySliderLabel:SetText("Icon Opacity")
-
-    local opacitySlider = CreateFrame("Slider", "TargetOpacitySlider", leftColumn, "OptionsSliderTemplate")
-    opacitySlider:SetPoint("TOPLEFT", opacitySliderLabel, "BOTTOMLEFT", 0, -10)
-    opacitySlider:SetMinMaxValues(0.1, 1.0)
-    opacitySlider:SetValue(Target_Settings.iconOpacity)
-    opacitySlider:SetValueStep(0.1)
-    opacitySlider:SetObeyStepOnDrag(true)
-    opacitySlider:SetWidth(200)
-
-    local opacitySliderValue = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    opacitySliderValue:SetPoint("LEFT", opacitySlider, "RIGHT", 10, 0)
-    opacitySliderValue:SetText(string.format("%.1f", Target_Settings.iconOpacity))
-
-    opacitySlider:SetScript("OnValueChanged", function(self, value)
-        value = tonumber(string.format("%.1f", value))
-        opacitySliderValue:SetText(value)
-        Target_Settings.iconOpacity = value
-        -- Update the opacity of all player textures
-        for _, player in pairs(players) do
-            if player.texture then
-                player.texture:SetAlpha(value)
-            end
-        end
-        updateNamePlates()
-        SaveProfileSettings()
-    end)
-    opacitySlider:Show()
-    lastControlLeft = opacitySlider
-
-    -- Show Overlay Checkbox
     local overlayCheckbox = CreateFrame("CheckButton", "TargetShowOverlayCheckbox", leftColumn, "UICheckButtonTemplate")
-    overlayCheckbox:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, -20)
+    overlayCheckbox:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, verticalSpacing)
     overlayCheckbox.text = overlayCheckbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     overlayCheckbox.text:SetPoint("LEFT", overlayCheckbox, "RIGHT", 0, 1)
-    overlayCheckbox.text:SetText("Show PvP Rating Overlay")
+    overlayCheckbox.text:SetText("Arena Overlay Rating")
     overlayCheckbox:SetChecked(Target_Settings.showOverlay)
     overlayCheckbox:SetScript("OnClick", function(self)
         Target_Settings.showOverlay = self:GetChecked()
@@ -603,7 +426,6 @@ local function OnLayoutClick(self)
             if TargetOverlayFrame then
                 TargetOverlayFrame:Show()
             else
-                -- If the overlay hasn't been created yet, create it
                 if addon.createOverlayFrame then
                     addon.createOverlayFrame()
                 end
@@ -614,34 +436,118 @@ local function OnLayoutClick(self)
             end
         end
         SaveProfileSettings()
+        addon.ApplyOverlayAppearanceChanges()
     end)
     lastControlLeft = overlayCheckbox
 
-    -- Right Column Controls
-    local lastControlRight = nil
+    local overlayLayoutLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    overlayLayoutLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, verticalSpacing)
+    overlayLayoutLabel:SetText("Arena Overlay Layout")
 
-    -- Toggle options for different game modes
+    local overlayLayoutDropdown = CreateFrame("Frame", "TargetOverlayLayoutDropdown", leftColumn, "UIDropDownMenuTemplate")
+    overlayLayoutDropdown:SetPoint("TOPLEFT", overlayLayoutLabel, "BOTTOMLEFT", -15, verticalSpacing)
+    UIDropDownMenu_SetWidth(overlayLayoutDropdown, 150)
+
+    local function OnOverlayLayoutClick(self)
+        UIDropDownMenu_SetSelectedID(overlayLayoutDropdown, self:GetID())
+        Target_Settings.overlayLayout = self.value
+        if TargetOverlayFrame and TargetOverlayFrame:IsShown() then
+            addon.arrangeArenaButtons()
+        end
+        SaveProfileSettings()
+    end
+
+    local function InitializeOverlayLayoutDropdown(self, level)
+        local info = UIDropDownMenu_CreateInfo()
+        local index = 1
+        for k, v in pairs(layoutTypes) do
+            info = UIDropDownMenu_CreateInfo()
+            info.text = k
+            info.value = k
+            info.func = OnOverlayLayoutClick
+            info.checked = (Target_Settings.overlayLayout == k)
+            UIDropDownMenu_AddButton(info, level)
+            if info.checked then
+                UIDropDownMenu_SetSelectedID(overlayLayoutDropdown, index)
+            end
+            index = index + 1
+        end
+    end
+
+    UIDropDownMenu_Initialize(overlayLayoutDropdown, InitializeOverlayLayoutDropdown)
+    lastControlLeft = overlayLayoutDropdown
+
+    local borderStyleLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    borderStyleLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, verticalSpacing)
+    borderStyleLabel:SetText("Overlay Border Style")
+
+    local borderStyleDropdown = CreateFrame("Frame", "TargetOverlayBorderStyleDropdown", leftColumn, "UIDropDownMenuTemplate")
+    borderStyleDropdown:SetPoint("TOPLEFT", borderStyleLabel, "BOTTOMLEFT", -15, verticalSpacing)
+    UIDropDownMenu_SetWidth(borderStyleDropdown, 150)
+
+    local function OnBorderStyleClick(self)
+        UIDropDownMenu_SetSelectedID(borderStyleDropdown, self:GetID())
+        Target_Settings.overlayBorderStyle = self.value
+        SaveProfileSettings()
+
+        if TargetOverlayFrame then
+            -- Ensure position and size are saved before recreation
+            if TargetOverlayFrame:IsShown() then
+                local point, relativeTo, relativePoint, x, y = TargetOverlayFrame:GetPoint()
+                Target_Settings.overlayPosX = x
+                Target_Settings.overlayPosY = y
+                Target_Settings.overlayWidth = TargetOverlayFrame:GetWidth()
+                Target_Settings.overlayHeight = TargetOverlayFrame:GetHeight()
+            end
+
+            -- Now that we've updated position/size in Target_Settings, save again
+            SaveProfileSettings()
+
+            TargetOverlayFrame:Hide()
+            TargetOverlayFrame = nil
+            addon.ClearOverlayFrameReference()
+            addon.createOverlayFrame()
+        end
+    end
+
+    local function InitializeBorderStyleDropdown(self, level)
+        local info = UIDropDownMenu_CreateInfo()
+        local index = 1
+        for styleName, stylePath in pairs(borderStyles) do
+            info = UIDropDownMenu_CreateInfo()
+            info.text = styleName
+            info.value = stylePath
+            info.func = OnBorderStyleClick
+            info.checked = (Target_Settings.overlayBorderStyle == stylePath)
+            UIDropDownMenu_AddButton(info, level)
+            if info.checked then
+                UIDropDownMenu_SetSelectedID(borderStyleDropdown, index)
+            end
+            index = index + 1
+        end
+    end
+
+    UIDropDownMenu_Initialize(borderStyleDropdown, InitializeBorderStyleDropdown)
+    lastControlLeft = borderStyleDropdown
+
+    -- Right Column: Game Mode Toggles
     local toggleOptionsTitle = rightColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     toggleOptionsTitle:SetPoint("TOPLEFT", 0, 0)
     toggleOptionsTitle:SetText("Game Mode Toggles")
-    lastControlRight = toggleOptionsTitle
 
+    local lastControlRight = toggleOptionsTitle
     local checkboxData = {
         { label = "Enable in Open World", setting = "enableInOpenWorld" },
         { label = "Enable in Arena", setting = "enableInArena" },
         { label = "Enable in Battleground", setting = "enableInBattleground" },
         { label = "Enable in Raid", setting = "enableInRaid" },
-        { label = "Enable in Dungeons", setting = "enableInDungeon" },  -- For dungeons
+        { label = "Enable in Dungeons", setting = "enableInDungeon" },
         { label = "Enable in Delves", setting = "enableInDelves" },
     }
 
     for i, data in ipairs(checkboxData) do
         local checkbox = CreateFrame("CheckButton", "TargetCheckbox" .. i, rightColumn, "UICheckButtonTemplate")
-        if lastControlRight then
-            checkbox:SetPoint("TOPLEFT", lastControlRight, "BOTTOMLEFT", 0, -10)
-        else
-            checkbox:SetPoint("TOPLEFT", toggleOptionsTitle, "BOTTOMLEFT", 0, -20)
-        end
+        checkbox:SetPoint("TOPLEFT", lastControlRight, "BOTTOMLEFT", 0, verticalSpacing)
         checkbox.text = checkbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         checkbox.text:SetPoint("LEFT", checkbox, "RIGHT", 0, 1)
         checkbox.text:SetText(data.label)
@@ -654,19 +560,127 @@ local function OnLayoutClick(self)
         lastControlRight = checkbox
     end
 
-    -- Donation and Reload UI Buttons
+    -- Position & Sizing in the bottom right
+    local positionTitle = rightColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    positionTitle:SetPoint("TOPLEFT", lastControlRight, "BOTTOMLEFT", 0, sectionSpacing - 5)
+    positionTitle:SetText("Position & Sizing")
+
+    local xSliderLabel = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    xSliderLabel:SetPoint("TOPLEFT", positionTitle, "BOTTOMLEFT", 0, verticalSpacing)
+    xSliderLabel:SetText("X Offset")
+
+    local xSlider = CreateFrame("Slider", "TargetXSlider", rightColumn, "OptionsSliderTemplate")
+    xSlider:SetPoint("TOPLEFT", xSliderLabel, "BOTTOMLEFT", 0, verticalSpacing)
+    xSlider:SetMinMaxValues(-200, 200)
+    xSlider:SetValue(Target_Settings.xValue)
+    xSlider:SetValueStep(1)
+    xSlider:SetObeyStepOnDrag(true)
+    xSlider:SetWidth(200)
+
+    local xSliderValue = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    xSliderValue:SetPoint("LEFT", xSlider, "RIGHT", 10, 0)
+    xSliderValue:SetText(floor(Target_Settings.xValue))
+
+    xSlider:SetScript("OnValueChanged", function(self, value)
+        value = floor(value + 0.5)
+        xSliderValue:SetText(value)
+        Target_Settings.xValue = value
+        updateNamePlates()
+        SaveProfileSettings()
+    end)
+
+    local ySliderLabel = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    ySliderLabel:SetPoint("TOPLEFT", xSlider, "BOTTOMLEFT", 0, sectionSpacing)
+    ySliderLabel:SetText("Y Offset")
+
+    local ySlider = CreateFrame("Slider", "TargetYSlider", rightColumn, "OptionsSliderTemplate")
+    ySlider:SetPoint("TOPLEFT", ySliderLabel, "BOTTOMLEFT", 0, verticalSpacing)
+    ySlider:SetMinMaxValues(-200, 200)
+    ySlider:SetValue(Target_Settings.yValue)
+    ySlider:SetValueStep(1)
+    ySlider:SetObeyStepOnDrag(true)
+    ySlider:SetWidth(200)
+
+    local ySliderValue = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    ySliderValue:SetPoint("LEFT", ySlider, "RIGHT", 10, 0)
+    ySliderValue:SetText(floor(Target_Settings.yValue))
+
+    ySlider:SetScript("OnValueChanged", function(self, value)
+        value = floor(value + 0.5)
+        ySliderValue:SetText(value)
+        Target_Settings.yValue = value
+        updateNamePlates()
+        SaveProfileSettings()
+    end)
+
+    local sizeSliderLabel = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    sizeSliderLabel:SetPoint("TOPLEFT", ySlider, "BOTTOMLEFT", 0, sectionSpacing)
+    sizeSliderLabel:SetText("Icon Size")
+
+    local sizeSlider = CreateFrame("Slider", "TargetSizeSlider", rightColumn, "OptionsSliderTemplate")
+    sizeSlider:SetPoint("TOPLEFT", sizeSliderLabel, "BOTTOMLEFT", 0, verticalSpacing)
+    sizeSlider:SetMinMaxValues(10, 100)
+    sizeSlider:SetValue(Target_Settings.iconSize)
+    sizeSlider:SetValueStep(1)
+    sizeSlider:SetObeyStepOnDrag(true)
+    sizeSlider:SetWidth(200)
+
+    local sizeSliderValue = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    sizeSliderValue:SetPoint("LEFT", sizeSlider, "RIGHT", 10, 0)
+    sizeSliderValue:SetText(floor(Target_Settings.iconSize))
+
+    sizeSlider:SetScript("OnValueChanged", function(self, value)
+        value = floor(value + 0.5)
+        sizeSliderValue:SetText(value)
+        Target_Settings.iconSize = value
+        for _, player in pairs(players) do
+            if player.texture then
+                player.texture:SetSize(value, value)
+            end
+        end
+        updateNamePlates()
+        SaveProfileSettings()
+    end)
+
+    local opacitySliderLabel = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    opacitySliderLabel:SetPoint("TOPLEFT", sizeSlider, "BOTTOMLEFT", 0, sectionSpacing)
+    opacitySliderLabel:SetText("Icon Opacity")
+
+    local opacitySlider = CreateFrame("Slider", "TargetOpacitySlider", rightColumn, "OptionsSliderTemplate")
+    opacitySlider:SetPoint("TOPLEFT", opacitySliderLabel, "BOTTOMLEFT", 0, verticalSpacing)
+    opacitySlider:SetMinMaxValues(0.1, 1.0)
+    opacitySlider:SetValue(Target_Settings.iconOpacity)
+    opacitySlider:SetValueStep(0.1)
+    opacitySlider:SetObeyStepOnDrag(true)
+    opacitySlider:SetWidth(200)
+
+    local opacitySliderValue = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    opacitySliderValue:SetPoint("LEFT", opacitySlider, "RIGHT", 10, 0)
+    opacitySliderValue:SetText(string.format("%.1f", Target_Settings.iconOpacity))
+
+    opacitySlider:SetScript("OnValueChanged", function(self, value)
+        value = tonumber(string.format("%.1f", value))
+        opacitySliderValue:SetText(value)
+        Target_Settings.iconOpacity = value
+        for _, player in pairs(players) do
+            if player.texture then
+                player.texture:SetAlpha(value)
+            end
+        end
+        updateNamePlates()
+        SaveProfileSettings()
+    end)
+
     local buttonContainer = CreateFrame("Frame", nil, optionsFrame)
     buttonContainer:SetSize(1, 1)
     buttonContainer:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 20)
 
-    -- Reload UI Button
     local reloadButton = CreateFrame("Button", "TargetReloadButton", buttonContainer, "UIPanelButtonTemplate")
     reloadButton:SetSize(120, 25)
     reloadButton:SetText("Reload UI")
     reloadButton:SetPoint("LEFT", buttonContainer, "CENTER", -65, 0)
     reloadButton:SetScript("OnClick", function() ReloadUI() end)
 
-    -- Donation Button
     local donateButton = CreateFrame("Button", "TargetDonateButton", buttonContainer, "UIPanelButtonTemplate")
     donateButton:SetSize(120, 25)
     donateButton:SetText("Donate")
@@ -718,17 +732,16 @@ local function OnLayoutClick(self)
         closeButton:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -5, -5)
     end)
 
-    -- Register the settings panel with Interface Options
     if Settings and Settings.RegisterCanvasLayoutCategory then
-        local category = Settings.RegisterCanvasLayoutCategory(optionsFrame, "ClassTarget")  -- Changed from addonName to "ClassTarget"
+        local category = Settings.RegisterCanvasLayoutCategory(optionsFrame, "ClassTarget")
         Settings.RegisterAddOnCategory(category)
     else
         InterfaceOptions_AddCategory(optionsFrame)
     end
 
-    -- Show/Hide function when the options frame is opened/closed
     optionsFrame:SetScript("OnShow", function(self)
         self:Show()
+        addon.ApplyOverlayAppearanceChanges()
     end)
 
     optionsFrame:SetScript("OnHide", function(self)
@@ -736,7 +749,49 @@ local function OnLayoutClick(self)
     end)
 end
 
--- Hook to Interface Options for showing the frame
+local function OnEvent(self, event, ...)
+    if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
+        initializePlayers()
+        clearNamePlates()
+        updateNamePlates()
+        startTicker()
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        clearNamePlates()
+        updateNamePlates()
+    elseif event == "UNIT_TARGET" then
+        local unit = ...
+        if unit and players[unit] then
+            clearNamePlates()
+            updateNamePlates()
+        end
+    elseif event == "ADDON_LOADED" and ... == addonName then
+        if not Target_Settings then
+            Target_Settings = CopyTable(defaultSettings)
+        end
+        if not Target_Profiles then
+            Target_Profiles = { ["Default"] = CopyTable(defaultSettings) }
+        end
+        if not Target_CurrentProfile then
+            Target_CurrentProfile = "Default"
+        end
+
+        profiles = Target_Profiles
+        currentProfile = Target_CurrentProfile
+        Target_Settings = profiles[currentProfile]
+
+        initializeUI()
+    elseif event == "PLAYER_LOGIN" then
+        if not Target_Settings then
+            Target_Settings = CopyTable(defaultSettings)
+        end
+        initializeUI()
+        updateNamePlates()
+        startTicker()
+    end
+end
+
+frame:SetScript("OnEvent", OnEvent)
+
 SLASH_TARGETOPTIONS1 = "/targetoptions"
 SlashCmdList["TARGETOPTIONS"] = function()
     if not TargetOptionsFrame:IsShown() then
@@ -746,5 +801,4 @@ SlashCmdList["TARGETOPTIONS"] = function()
     end
 end
 
--- Expose the addon table to allow accessing functions from other files
 _G[addonName] = addon
