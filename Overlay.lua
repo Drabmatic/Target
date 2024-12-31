@@ -2,9 +2,9 @@
 local addonName, addon = ...
 
 local overlayFrame
-
 addon.arenaButtons = {}
 
+-- Function to save overlay settings
 local function SaveOverlaySettings()
     if Target_Settings and overlayFrame then
         local point, relativeTo, relativePoint, x, y = overlayFrame:GetPoint()
@@ -15,11 +15,12 @@ local function SaveOverlaySettings()
     end
 end
 
--- Function to clear the overlay frame reference so we can recreate it from scratch
+-- Function to clear the overlay frame reference
 function addon.ClearOverlayFrameReference()
     overlayFrame = nil
 end
 
+-- Function to arrange arena buttons based on layout
 function addon.arrangeArenaButtons()
     if not overlayFrame or not overlayFrame:IsShown() then return end
 
@@ -55,14 +56,14 @@ function addon.arrangeArenaButtons()
         elseif overlayLayout == "Vertical" then
             button:SetPoint("TOPLEFT", overlayFrame, "TOPLEFT", padding, -padding - (buttonHeight + padding) * (i - 1))
         elseif overlayLayout == "Grid" then
-            local columns = 3
-            local row = math.floor((i - 1) / columns)
-            local col = (i - 1) % columns
+            local row = math.floor((i - 1) / 3)
+            local col = (i - 1) % 3
             button:SetPoint("TOPLEFT", overlayFrame, "TOPLEFT", padding + (buttonWidth + padding) * col, -padding - (buttonHeight + padding) * row)
         end
     end
 end
 
+-- Function to create the overlay frame
 function addon.createOverlayFrame()
     if overlayFrame then
         overlayFrame:Show()
@@ -80,7 +81,6 @@ function addon.createOverlayFrame()
     end
 
     local borderStyle = Target_Settings.overlayBorderStyle or "Interface\\DialogFrame\\UI-DialogBox-Border"
-
     local overlayWidth = Target_Settings.overlayWidth or 650
     local overlayHeight = Target_Settings.overlayHeight or 38
     local posX = Target_Settings.overlayPosX or 0
@@ -197,28 +197,30 @@ function addon.createOverlayFrame()
     addon.arrangeArenaButtons()
     _G["TargetOverlayFrame"] = overlayFrame
     overlayFrame:Show()
+end
 
-    SLASH_TARGETRESET1 = "/targetreset"
-    SlashCmdList["TARGETRESET"] = function(msg)
-        if Target_Settings then
-            Target_Settings.overlayPosX = 0
-            Target_Settings.overlayPosY = 0
-            Target_Settings.overlayWidth = 650
-            Target_Settings.overlayHeight = 35
+-- Slash command to reset overlay position and size
+SLASH_TARGETRESET1 = "/targetreset"
+SlashCmdList["TARGETRESET"] = function(msg)
+    if Target_Settings then
+        Target_Settings.overlayPosX = 0
+        Target_Settings.overlayPosY = 0
+        Target_Settings.overlayWidth = 650
+        Target_Settings.overlayHeight = 35
 
-            print("ClassTarget: Overlay position and size have been reset to default.")
+        print("ClassTarget: Overlay position and size have been reset to default.")
 
-            if overlayFrame and overlayFrame:IsShown() then
-                overlayFrame:SetSize(Target_Settings.overlayWidth, Target_Settings.overlayHeight)
-                overlayFrame:SetPoint("CENTER", UIParent, "CENTER", Target_Settings.overlayPosX, Target_Settings.overlayPosY)
-                addon.arrangeArenaButtons()
-            end
-        else
-            print("ClassTarget: No settings found to reset.")
+        if overlayFrame and overlayFrame:IsShown() then
+            overlayFrame:SetSize(Target_Settings.overlayWidth, Target_Settings.overlayHeight)
+            overlayFrame:SetPoint("CENTER", UIParent, "CENTER", Target_Settings.overlayPosX, Target_Settings.overlayPosY)
+            addon.arrangeArenaButtons()
         end
+    else
+        print("ClassTarget: No settings found to reset.")
     end
 end
 
+-- Event frame for addon initialization
 local overlayEventFrame = CreateFrame("Frame")
 overlayEventFrame:RegisterEvent("ADDON_LOADED")
 overlayEventFrame:RegisterEvent("PLAYER_LOGIN")
@@ -251,48 +253,3 @@ overlayEventFrame:SetScript("OnEvent", function(self, event, ...)
         overlayEventFrame:UnregisterEvent(event)
     end
 end)
-
-function updateOverlayLayout()
-    if not overlayFrame or not overlayFrame:IsShown() then return end
-
-    local overlayLayout = Target_Settings.overlayLayout
-    local padding = 5
-    local buttonWidth = 50
-    local buttonHeight = 20
-    local buttons = overlayFrame.buttons or {}
-
-    for _, button in ipairs(buttons) do
-        button:ClearAllPoints()
-    end
-
-    local requiredWidth, requiredHeight
-    if overlayLayout == "Horizontal" then
-        requiredWidth = #buttons * (buttonWidth + padding) + padding
-        requiredHeight = buttonHeight + 2 * padding
-        for i, button in ipairs(buttons) do
-            button:SetPoint("TOPLEFT", overlayFrame, "TOPLEFT", padding + (buttonWidth + padding) * (i - 1), -padding)
-        end
-    elseif overlayLayout == "Vertical" then
-        requiredWidth = buttonWidth + 2 * padding
-        requiredHeight = #buttons * (buttonHeight + padding) + padding
-        for i, button in ipairs(buttons) do
-            button:SetPoint("TOPLEFT", overlayFrame, "TOPLEFT", padding, -padding - (buttonHeight + padding) * (i - 1))
-        end
-    elseif overlayLayout == "Grid" then
-        local cols = math.ceil(math.sqrt(#buttons))
-        local rows = math.ceil(#buttons / cols)
-        requiredWidth = padding + (buttonWidth + padding) * cols
-        requiredHeight = padding + (buttonHeight + padding) * rows
-        for i, button in ipairs(buttons) do
-            local col = (i - 1) % cols
-            local row = math.floor((i - 1) / cols)
-            button:SetPoint("TOPLEFT", overlayFrame, "TOPLEFT", padding + (buttonWidth + padding) * col, -padding - (buttonHeight + padding) * row)
-        end
-    else
-        Target_Settings.overlayLayout = "Horizontal"
-        updateOverlayLayout()
-        return
-    end
-
-    overlayFrame:SetSize(requiredWidth, requiredHeight)
-end

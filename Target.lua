@@ -1,5 +1,4 @@
 -- Target.lua
-
 local addonName, addon = ...
 
 local borderStyles = {
@@ -59,11 +58,13 @@ local players = {}
 local nameplateFrames = {}
 local updateTicker
 
+-- Function to save profile settings
 local function SaveProfileSettings()
     Target_Profiles[currentProfile] = CopyTable(Target_Settings)
     Target_CurrentProfile = currentProfile
 end
 
+-- Function to generate a unique profile name
 local function generateUniqueProfileName(baseName)
     local counter = 1
     local uniqueName = baseName
@@ -74,6 +75,7 @@ local function generateUniqueProfileName(baseName)
     return uniqueName
 end
 
+-- Function to delete a profile
 local function deleteProfile(profileName)
     if profileName and profiles[profileName] and profileName ~= "Default" then
         profiles[profileName] = nil
@@ -85,6 +87,7 @@ local function deleteProfile(profileName)
     end
 end
 
+-- Function to create a player object
 local function createPlayer(unitId)
     local player = players[unitId] or {}
     players[unitId] = player
@@ -111,10 +114,12 @@ local function createPlayer(unitId)
     return player
 end
 
+-- Function to clear all players
 local function clearPlayers()
     wipe(players)
 end
 
+-- Function to initialize players
 local function initializePlayers()
     clearPlayers()
     players["player"] = createPlayer("player")
@@ -123,6 +128,7 @@ local function initializePlayers()
     end
 end
 
+-- Function to get the target count for a unit
 local function getTargetCount(unitGuid)
     local count = 0
     for _, player in pairs(players) do
@@ -133,6 +139,7 @@ local function getTargetCount(unitGuid)
     return count
 end
 
+-- Function to check if the addon is enabled in the current zone
 local function isAddonEnabled()
     local zoneType = select(2, IsInInstance())
     local zoneChecks = {
@@ -146,6 +153,7 @@ local function isAddonEnabled()
     return zoneChecks[zoneType] or false
 end
 
+-- Function to update nameplates
 local function updateNamePlates()
     if not isAddonEnabled() then
         for _, f in pairs(nameplateFrames) do
@@ -215,12 +223,14 @@ local function updateNamePlates()
     end
 end
 
+-- Function to clear all nameplates
 local function clearNamePlates()
     for _, f in pairs(nameplateFrames) do
         f:Hide()
     end
 end
 
+-- Function to start the update ticker
 local function startTicker()
     if updateTicker then
         updateTicker:Cancel()
@@ -228,6 +238,19 @@ local function startTicker()
     updateTicker = C_Timer.NewTicker(0.1, updateNamePlates)
 end
 
+-- Function to add tooltips to UI elements
+local function addTooltip(frame, text)
+    frame:SetScript("OnEnter", function()
+        GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
+        GameTooltip:SetText(text)
+        GameTooltip:Show()
+    end)
+    frame:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+end
+
+-- Function to initialize the UI
 function initializeUI()
     if TargetOptionsFrame and TargetOptionsFrame:IsObjectType("Frame") then
         return
@@ -268,6 +291,7 @@ function initializeUI()
     local profileDropdown = CreateFrame("Frame", "TargetProfileDropdown", leftColumn, "UIDropDownMenuTemplate")
     profileDropdown:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", -15, verticalSpacing)
     UIDropDownMenu_SetWidth(profileDropdown, 150)
+    addTooltip(profileDropdown, "Select a profile to load its settings.")
 
     local function OnClick(self)
         UIDropDownMenu_SetSelectedID(profileDropdown, self:GetID())
@@ -312,6 +336,7 @@ function initializeUI()
         SaveProfileSettings()
         addon.ApplyOverlayAppearanceChanges()
     end)
+    addTooltip(createProfileButton, "Create a new profile with the current settings.")
     lastControlLeft = createProfileButton
 
     local deleteProfileButton = CreateFrame("Button", "DeleteProfileButton", leftColumn, "UIPanelButtonTemplate")
@@ -324,6 +349,7 @@ function initializeUI()
         updateNamePlates()
         addon.ApplyOverlayAppearanceChanges()
     end)
+    addTooltip(deleteProfileButton, "Delete the currently selected profile.")
 
     -- General Settings
     local generalSettingsTitle = leftColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
@@ -338,6 +364,7 @@ function initializeUI()
     local iconTypeDropdown = CreateFrame("Frame", "TargetIconTypeDropdown", leftColumn, "UIDropDownMenuTemplate")
     iconTypeDropdown:SetPoint("TOPLEFT", iconTypeLabel, "BOTTOMLEFT", -15, verticalSpacing)
     UIDropDownMenu_SetWidth(iconTypeDropdown, 150)
+    addTooltip(iconTypeDropdown, "Choose the appearance of the target icons.")
 
     local function OnIconTypeClick(self)
         UIDropDownMenu_SetSelectedID(iconTypeDropdown, self:GetID())
@@ -380,6 +407,7 @@ function initializeUI()
     local layoutDropdown = CreateFrame("Frame", "TargetLayoutDropdown", leftColumn, "UIDropDownMenuTemplate")
     layoutDropdown:SetPoint("TOPLEFT", layoutDropdownLabel, "BOTTOMLEFT", -15, verticalSpacing)
     UIDropDownMenu_SetWidth(layoutDropdown, 150)
+    addTooltip(layoutDropdown, "Choose how the target icons are arranged.")
 
     local function OnLayoutClick(self)
         UIDropDownMenu_SetSelectedID(layoutDropdown, self:GetID())
@@ -438,6 +466,7 @@ function initializeUI()
         SaveProfileSettings()
         addon.ApplyOverlayAppearanceChanges()
     end)
+    addTooltip(overlayCheckbox, "Toggle the arena overlay rating display.")
     lastControlLeft = overlayCheckbox
 
     local overlayLayoutLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -447,6 +476,7 @@ function initializeUI()
     local overlayLayoutDropdown = CreateFrame("Frame", "TargetOverlayLayoutDropdown", leftColumn, "UIDropDownMenuTemplate")
     overlayLayoutDropdown:SetPoint("TOPLEFT", overlayLayoutLabel, "BOTTOMLEFT", -15, verticalSpacing)
     UIDropDownMenu_SetWidth(overlayLayoutDropdown, 150)
+    addTooltip(overlayLayoutDropdown, "Choose how the arena overlay buttons are arranged.")
 
     local function OnOverlayLayoutClick(self)
         UIDropDownMenu_SetSelectedID(overlayLayoutDropdown, self:GetID())
@@ -484,6 +514,7 @@ function initializeUI()
     local borderStyleDropdown = CreateFrame("Frame", "TargetOverlayBorderStyleDropdown", leftColumn, "UIDropDownMenuTemplate")
     borderStyleDropdown:SetPoint("TOPLEFT", borderStyleLabel, "BOTTOMLEFT", -15, verticalSpacing)
     UIDropDownMenu_SetWidth(borderStyleDropdown, 150)
+    addTooltip(borderStyleDropdown, "Choose the border style for the arena overlay.")
 
     local function OnBorderStyleClick(self)
         UIDropDownMenu_SetSelectedID(borderStyleDropdown, self:GetID())
@@ -557,6 +588,7 @@ function initializeUI()
             updateNamePlates()
             SaveProfileSettings()
         end)
+        addTooltip(checkbox, "Enable or disable the addon in " .. data.label .. ".")
         lastControlRight = checkbox
     end
 
@@ -576,6 +608,7 @@ function initializeUI()
     xSlider:SetValueStep(1)
     xSlider:SetObeyStepOnDrag(true)
     xSlider:SetWidth(200)
+    addTooltip(xSlider, "Adjust the horizontal position of the target icons.")
 
     local xSliderValue = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     xSliderValue:SetPoint("LEFT", xSlider, "RIGHT", 10, 0)
@@ -600,6 +633,7 @@ function initializeUI()
     ySlider:SetValueStep(1)
     ySlider:SetObeyStepOnDrag(true)
     ySlider:SetWidth(200)
+    addTooltip(ySlider, "Adjust the vertical position of the target icons.")
 
     local ySliderValue = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     ySliderValue:SetPoint("LEFT", ySlider, "RIGHT", 10, 0)
@@ -624,6 +658,7 @@ function initializeUI()
     sizeSlider:SetValueStep(1)
     sizeSlider:SetObeyStepOnDrag(true)
     sizeSlider:SetWidth(200)
+    addTooltip(sizeSlider, "Adjust the size of the target icons.")
 
     local sizeSliderValue = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     sizeSliderValue:SetPoint("LEFT", sizeSlider, "RIGHT", 10, 0)
@@ -653,6 +688,7 @@ function initializeUI()
     opacitySlider:SetValueStep(0.1)
     opacitySlider:SetObeyStepOnDrag(true)
     opacitySlider:SetWidth(200)
+    addTooltip(opacitySlider, "Adjust the transparency of the target icons.")
 
     local opacitySliderValue = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     opacitySliderValue:SetPoint("LEFT", opacitySlider, "RIGHT", 10, 0)
@@ -680,6 +716,7 @@ function initializeUI()
     reloadButton:SetText("Reload UI")
     reloadButton:SetPoint("LEFT", buttonContainer, "CENTER", -65, 0)
     reloadButton:SetScript("OnClick", function() ReloadUI() end)
+    addTooltip(reloadButton, "Reload the UI to apply changes.")
 
     local donateButton = CreateFrame("Button", "TargetDonateButton", buttonContainer, "UIPanelButtonTemplate")
     donateButton:SetSize(120, 25)
@@ -731,6 +768,7 @@ function initializeUI()
         local closeButton = CreateFrame("Button", nil, popup, "UIPanelCloseButton")
         closeButton:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -5, -5)
     end)
+    addTooltip(donateButton, "Support the addon developer by donating.")
 
     if Settings and Settings.RegisterCanvasLayoutCategory then
         local category = Settings.RegisterCanvasLayoutCategory(optionsFrame, "ClassTarget")
@@ -749,6 +787,7 @@ function initializeUI()
     end)
 end
 
+-- Event handler for the main frame
 local function OnEvent(self, event, ...)
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         initializePlayers()
@@ -792,6 +831,7 @@ end
 
 frame:SetScript("OnEvent", OnEvent)
 
+-- Slash command to open options
 SLASH_TARGETOPTIONS1 = "/targetoptions"
 SlashCmdList["TARGETOPTIONS"] = function()
     if not TargetOptionsFrame:IsShown() then
