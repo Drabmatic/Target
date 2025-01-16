@@ -34,10 +34,75 @@ local profiles = {
 }
 local currentProfile = "Default"
 
+--------------------------------------------------------------------------------
+-- 1) Add new icon types for Minimalistic and HD:
+--------------------------------------------------------------------------------
 local iconTypes = {
-    ["Default"] = { suffix = "", useClassColor = false },
-    ["Circle"] = { suffix = "-circle", useClassColor = false },
-    ["Class Color"] = { suffix = "-color", useClassColor = true }
+    ["Default"] = { suffix = "",        useClassColor = false },
+    ["Circle"] = { suffix = "-circle",  useClassColor = false },
+    ["Class Color"] = { suffix = "-color", useClassColor = true },
+
+    -- New icon styles:
+    ["Minimalistic"] = { styleKey = "Min" },
+    ["HD"]           = { styleKey = "HD" },
+}
+
+--------------------------------------------------------------------------------
+-- 2) Lookup table for classes -> filenames:
+--------------------------------------------------------------------------------
+local classToFilenames = {
+    deathknight = {
+        Min = "Death Knight-Min.tga",
+        HD  = "DK-HD.tga",
+    },
+    demonhunter = {
+        Min = "Demon Hunter-Min.tga",
+        HD  = "DH-HD.tga",
+    },
+    druid = {
+        Min = "Druid-Min.tga",
+        HD  = "Druid-HD.tga",
+    },
+    evoker = {
+        Min = "Evoker-Min.tga",
+        HD  = "Evoker-HD.tga",
+    },
+    hunter = {
+        Min = "Hunter-Min.tga",
+        HD  = "Hunter-HD.tga",
+    },
+    mage = {
+        Min = "Mage-Min.tga",
+        HD  = "Mage-HD.tga",
+    },
+    monk = {
+        Min = "Monk-Min.tga",
+        HD  = "Monk-HD.tga",
+    },
+    paladin = {
+        Min = "Paladin-Min.tga",
+        HD  = "Paladin-HD.tga",
+    },
+    priest = {
+        Min = "Priest-Min.tga",
+        HD  = "Priest-HD.tga",
+    },
+    rogue = {
+        Min = "Rogue-Min.tga",
+        HD  = "Rogue-HD.tga",
+    },
+    shaman = {
+        Min = "Shaman-Min.tga",
+        HD  = "Shaman-HD.tga",
+    },
+    warlock = {
+        Min = "Warlock-Min.tga",
+        HD  = "Warlock-HD.tga",
+    },
+    warrior = {
+        Min = "Warrior-Min.tga",
+        HD  = "Warrior-HD.tga",
+    },
 }
 
 local layoutTypes = {
@@ -87,7 +152,9 @@ local function deleteProfile(profileName)
     end
 end
 
--- Function to create a player object
+--------------------------------------------------------------------------------
+-- 3) Updated createPlayer() to check styleKey:
+--------------------------------------------------------------------------------
 local function createPlayer(unitId)
     local player = players[unitId] or {}
     players[unitId] = player
@@ -97,16 +164,29 @@ local function createPlayer(unitId)
     player.guid = UnitGUID(unitId) or ""
     player.class = select(2, UnitClass(unitId)) or ""
     if player.class then
+        -- classes become "deathknight", "demonhunter", "druid", etc.
         player.class = player.class:lower()
     end
 
     local iconType = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
-    local classImage = player.class .. iconType.suffix .. ".tga"
+
+    -- Fallback filename if no styleKey or mismatch
+    local classImage = player.class .. (iconType.suffix or "") .. ".tga"
+
+    -- If this iconType uses styleKey (like "Min"/"HD") and our table has it:
+    if iconType.styleKey
+       and classToFilenames[player.class]
+       and classToFilenames[player.class][iconType.styleKey]
+    then
+        classImage = classToFilenames[player.class][iconType.styleKey]
+    end
 
     if not player.texture then
         player.texture = frame:CreateTexture(player.guid .. "-Texture", "OVERLAY")
     end
     local iconSize = tonumber(Target_Settings.iconSize) or 32
+
+    -- Full path to the TGA in your AddOn folder
     player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
     player.texture:SetSize(iconSize, iconSize)
     player.texture:SetAlpha(Target_Settings.iconOpacity)
@@ -238,7 +318,7 @@ local function startTicker()
     updateTicker = C_Timer.NewTicker(0.1, updateNamePlates)
 end
 
--- Function to add tooltips to UI elements
+-- Helper: add a tooltip to a UI element
 local function addTooltip(frame, text)
     frame:SetScript("OnEnter", function()
         GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
@@ -372,7 +452,16 @@ function initializeUI()
         for _, player in pairs(players) do
             if player.texture then
                 local it = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
-                local classImage = player.class .. it.suffix .. ".tga"
+                local classImage = player.class .. (it.suffix or "") .. ".tga"
+
+                -- If it's a styleKey (Min/HD), try the table
+                if it.styleKey
+                   and classToFilenames[player.class]
+                   and classToFilenames[player.class][it.styleKey]
+                then
+                    classImage = classToFilenames[player.class][it.styleKey]
+                end
+
                 player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
             end
         end

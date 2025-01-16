@@ -1,4 +1,11 @@
-Changed the name to "ClassTarget" in the options menu instead of "Target".
+lightweight tag 59421b44e91d29ceb6ff394354797e2ef95fd21a V3.1
+Author:	GitHub <noreply@github.com>
+Date:	Tue Dec 31 17:27:29 2024 -0500
 
+commit 59421b44e91d29ceb6ff394354797e2ef95fd21a
+Author: Drabmatic <157862756+Drabmatic@users.noreply.github.com>
+Date:   Tue Dec 31 17:27:29 2024 -0500
 
-Arena Rating Overlay w/ toggle.  ( working on seeing if i can get the buttons to actually queue )
+    Add files via upload
+
+Added new icon sets
