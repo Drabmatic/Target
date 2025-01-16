@@ -35,73 +35,87 @@ local profiles = {
 local currentProfile = "Default"
 
 --------------------------------------------------------------------------------
--- 1) Add new icon types for Minimalistic and HD:
+-- 1) Icon types: existing + Minimalistic, HD, and now Cartoon
 --------------------------------------------------------------------------------
 local iconTypes = {
     ["Default"] = { suffix = "",        useClassColor = false },
-    ["Circle"] = { suffix = "-circle",  useClassColor = false },
+    ["Circle"]  = { suffix = "-circle", useClassColor = false },
     ["Class Color"] = { suffix = "-color", useClassColor = true },
 
-    -- New icon styles:
+    -- Additional icon styles
     ["Minimalistic"] = { styleKey = "Min" },
     ["HD"]           = { styleKey = "HD" },
+    ["Cartoon"]      = { styleKey = "Cartoon" },
 }
 
 --------------------------------------------------------------------------------
--- 2) Lookup table for classes -> filenames:
+-- 2) Class-to-file lookup for Min, HD, and Cartoon
 --------------------------------------------------------------------------------
 local classToFilenames = {
     deathknight = {
         Min = "Death Knight-Min.tga",
         HD  = "DK-HD.tga",
+        Cartoon = "DeathKnight-Cartoon.tga",
     },
     demonhunter = {
         Min = "Demon Hunter-Min.tga",
         HD  = "DH-HD.tga",
+        Cartoon = "DemonHunter-Cartoon.tga",
     },
     druid = {
         Min = "Druid-Min.tga",
         HD  = "Druid-HD.tga",
+        Cartoon = "Druid-Cartoon.tga",
     },
     evoker = {
         Min = "Evoker-Min.tga",
         HD  = "Evoker-HD.tga",
+        Cartoon = "Evoker-Cartoon.tga",
     },
     hunter = {
         Min = "Hunter-Min.tga",
         HD  = "Hunter-HD.tga",
+        Cartoon = "Hunter-Cartoon.tga",
     },
     mage = {
         Min = "Mage-Min.tga",
         HD  = "Mage-HD.tga",
+        Cartoon = "Mage-Cartoon.tga",
     },
     monk = {
         Min = "Monk-Min.tga",
         HD  = "Monk-HD.tga",
+        Cartoon = "Monk-Cartoon.tga",
     },
     paladin = {
         Min = "Paladin-Min.tga",
         HD  = "Paladin-HD.tga",
+        Cartoon = "Paladin-Cartoon.tga",
     },
     priest = {
         Min = "Priest-Min.tga",
         HD  = "Priest-HD.tga",
+        Cartoon = "Priest-Cartoon.tga",
     },
     rogue = {
         Min = "Rogue-Min.tga",
         HD  = "Rogue-HD.tga",
+        Cartoon = "Rogue-Cartoon.tga",
     },
     shaman = {
         Min = "Shaman-Min.tga",
         HD  = "Shaman-HD.tga",
+        Cartoon = "Shaman-Cartoon.tga",
     },
     warlock = {
         Min = "Warlock-Min.tga",
         HD  = "Warlock-HD.tga",
+        Cartoon = "Warlock-Cartoon.tga",
     },
     warrior = {
         Min = "Warrior-Min.tga",
         HD  = "Warrior-HD.tga",
+        Cartoon = "Warrior-Cartoon.tga",
     },
 }
 
@@ -123,13 +137,11 @@ local players = {}
 local nameplateFrames = {}
 local updateTicker
 
--- Function to save profile settings
 local function SaveProfileSettings()
     Target_Profiles[currentProfile] = CopyTable(Target_Settings)
     Target_CurrentProfile = currentProfile
 end
 
--- Function to generate a unique profile name
 local function generateUniqueProfileName(baseName)
     local counter = 1
     local uniqueName = baseName
@@ -140,7 +152,6 @@ local function generateUniqueProfileName(baseName)
     return uniqueName
 end
 
--- Function to delete a profile
 local function deleteProfile(profileName)
     if profileName and profiles[profileName] and profileName ~= "Default" then
         profiles[profileName] = nil
@@ -153,7 +164,7 @@ local function deleteProfile(profileName)
 end
 
 --------------------------------------------------------------------------------
--- 3) Updated createPlayer() to check styleKey:
+-- 3) createPlayer() checks iconType.styleKey for Min/HD/Cartoon
 --------------------------------------------------------------------------------
 local function createPlayer(unitId)
     local player = players[unitId] or {}
@@ -173,7 +184,7 @@ local function createPlayer(unitId)
     -- Fallback filename if no styleKey or mismatch
     local classImage = player.class .. (iconType.suffix or "") .. ".tga"
 
-    -- If this iconType uses styleKey (like "Min"/"HD") and our table has it:
+    -- If this iconType uses a styleKey (Min, HD, or Cartoon) and our table has it:
     if iconType.styleKey
        and classToFilenames[player.class]
        and classToFilenames[player.class][iconType.styleKey]
@@ -194,12 +205,10 @@ local function createPlayer(unitId)
     return player
 end
 
--- Function to clear all players
 local function clearPlayers()
     wipe(players)
 end
 
--- Function to initialize players
 local function initializePlayers()
     clearPlayers()
     players["player"] = createPlayer("player")
@@ -208,7 +217,6 @@ local function initializePlayers()
     end
 end
 
--- Function to get the target count for a unit
 local function getTargetCount(unitGuid)
     local count = 0
     for _, player in pairs(players) do
@@ -219,7 +227,6 @@ local function getTargetCount(unitGuid)
     return count
 end
 
--- Function to check if the addon is enabled in the current zone
 local function isAddonEnabled()
     local zoneType = select(2, IsInInstance())
     local zoneChecks = {
@@ -233,7 +240,6 @@ local function isAddonEnabled()
     return zoneChecks[zoneType] or false
 end
 
--- Function to update nameplates
 local function updateNamePlates()
     if not isAddonEnabled() then
         for _, f in pairs(nameplateFrames) do
@@ -303,14 +309,12 @@ local function updateNamePlates()
     end
 end
 
--- Function to clear all nameplates
 local function clearNamePlates()
     for _, f in pairs(nameplateFrames) do
         f:Hide()
     end
 end
 
--- Function to start the update ticker
 local function startTicker()
     if updateTicker then
         updateTicker:Cancel()
@@ -318,7 +322,6 @@ local function startTicker()
     updateTicker = C_Timer.NewTicker(0.1, updateNamePlates)
 end
 
--- Helper: add a tooltip to a UI element
 local function addTooltip(frame, text)
     frame:SetScript("OnEnter", function()
         GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
@@ -330,7 +333,6 @@ local function addTooltip(frame, text)
     end)
 end
 
--- Function to initialize the UI
 function initializeUI()
     if TargetOptionsFrame and TargetOptionsFrame:IsObjectType("Frame") then
         return
@@ -454,7 +456,6 @@ function initializeUI()
                 local it = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
                 local classImage = player.class .. (it.suffix or "") .. ".tga"
 
-                -- If it's a styleKey (Min/HD), try the table
                 if it.styleKey
                    and classToFilenames[player.class]
                    and classToFilenames[player.class][it.styleKey]
@@ -611,7 +612,6 @@ function initializeUI()
         SaveProfileSettings()
 
         if TargetOverlayFrame then
-            -- Ensure position and size are saved before recreation
             if TargetOverlayFrame:IsShown() then
                 local point, relativeTo, relativePoint, x, y = TargetOverlayFrame:GetPoint()
                 Target_Settings.overlayPosX = x
@@ -619,8 +619,6 @@ function initializeUI()
                 Target_Settings.overlayWidth = TargetOverlayFrame:GetWidth()
                 Target_Settings.overlayHeight = TargetOverlayFrame:GetHeight()
             end
-
-            -- Now that we've updated position/size in Target_Settings, save again
             SaveProfileSettings()
 
             TargetOverlayFrame:Hide()
@@ -681,7 +679,7 @@ function initializeUI()
         lastControlRight = checkbox
     end
 
-    -- Position & Sizing in the bottom right
+    -- Position & Sizing
     local positionTitle = rightColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     positionTitle:SetPoint("TOPLEFT", lastControlRight, "BOTTOMLEFT", 0, sectionSpacing - 5)
     positionTitle:SetText("Position & Sizing")
@@ -876,7 +874,6 @@ function initializeUI()
     end)
 end
 
--- Event handler for the main frame
 local function OnEvent(self, event, ...)
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         initializePlayers()
