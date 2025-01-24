@@ -19,6 +19,7 @@ local defaultSettings = {
     iconOpacity = 1.0,
     enableInOpenWorld = true,
     enableInArena = true,
+    enableInSoloShuffle = true,     -- <--- NEW
     enableInBattleground = true,
     enableInRaid = true,
     enableInDungeon = true,
@@ -35,7 +36,7 @@ local profiles = {
 local currentProfile = "Default"
 
 --------------------------------------------------------------------------------
--- 1) Icon types: existing + Minimalistic, HD, and now Cartoon
+-- 1) Icon types: existing + Minimalistic, HD, and Cartoon
 --------------------------------------------------------------------------------
 local iconTypes = {
     ["Default"] = { suffix = "",        useClassColor = false },
@@ -137,6 +138,9 @@ local players = {}
 local nameplateFrames = {}
 local updateTicker
 
+--------------------------------------------------------------------------------
+-- Save / Profile Management
+--------------------------------------------------------------------------------
 local function SaveProfileSettings()
     Target_Profiles[currentProfile] = CopyTable(Target_Settings)
     Target_CurrentProfile = currentProfile
@@ -164,7 +168,7 @@ local function deleteProfile(profileName)
 end
 
 --------------------------------------------------------------------------------
--- 3) createPlayer() checks iconType.styleKey for Min/HD/Cartoon
+-- createPlayer() - set the icon texture
 --------------------------------------------------------------------------------
 local function createPlayer(unitId)
     local player = players[unitId] or {}
@@ -175,16 +179,15 @@ local function createPlayer(unitId)
     player.guid = UnitGUID(unitId) or ""
     player.class = select(2, UnitClass(unitId)) or ""
     if player.class then
-        -- classes become "deathknight", "demonhunter", "druid", etc.
         player.class = player.class:lower()
     end
 
     local iconType = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
 
-    -- Fallback filename if no styleKey or mismatch
+    -- Fallback if no styleKey
     local classImage = player.class .. (iconType.suffix or "") .. ".tga"
 
-    -- If this iconType uses a styleKey (Min, HD, or Cartoon) and our table has it:
+    -- If we have a styleKey (Min, HD, Cartoon) for this class
     if iconType.styleKey
        and classToFilenames[player.class]
        and classToFilenames[player.class][iconType.styleKey]
@@ -197,7 +200,6 @@ local function createPlayer(unitId)
     end
     local iconSize = tonumber(Target_Settings.iconSize) or 32
 
-    -- Full path to the TGA in your AddOn folder
     player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
     player.texture:SetSize(iconSize, iconSize)
     player.texture:SetAlpha(Target_Settings.iconOpacity)
@@ -217,6 +219,30 @@ local function initializePlayers()
     end
 end
 
+--------------------------------------------------------------------------------
+-- isAddonEnabled() - now includes Solo Shuffle check
+--------------------------------------------------------------------------------
+local function isAddonEnabled()
+    local inInstance, zoneType = IsInInstance()
+    -- If we’re in an arena, check if Solo Shuffle is active:
+    if zoneType == "arena" and C_PvP.IsSoloShuffle and C_PvP.IsSoloShuffle() then
+        return Target_Settings.enableInSoloShuffle
+    end
+
+    local zoneChecks = {
+        none = Target_Settings.enableInOpenWorld,
+        arena = Target_Settings.enableInArena,
+        pvp = Target_Settings.enableInBattleground,
+        raid = Target_Settings.enableInRaid,
+        party = Target_Settings.enableInDungeon,
+        delves = Target_Settings.enableInDelves
+    }
+    return zoneChecks[zoneType] or false
+end
+
+--------------------------------------------------------------------------------
+-- updateNamePlates
+--------------------------------------------------------------------------------
 local function getTargetCount(unitGuid)
     local count = 0
     for _, player in pairs(players) do
@@ -227,17 +253,10 @@ local function getTargetCount(unitGuid)
     return count
 end
 
-local function isAddonEnabled()
-    local zoneType = select(2, IsInInstance())
-    local zoneChecks = {
-        none = Target_Settings.enableInOpenWorld,
-        arena = Target_Settings.enableInArena,
-        pvp = Target_Settings.enableInBattleground,
-        raid = Target_Settings.enableInRaid,
-        party = Target_Settings.enableInDungeon,
-        delves = Target_Settings.enableInDelves
-    }
-    return zoneChecks[zoneType] or false
+local function clearNamePlates()
+    for _, f in pairs(nameplateFrames) do
+        f:Hide()
+    end
 end
 
 local function updateNamePlates()
@@ -280,6 +299,7 @@ local function updateNamePlates()
                     nameplateFrame:SetSize(width * columns, height * rows)
                     nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
                 else
+                    -- Fallback to horizontal
                     nameplateFrame:SetSize(width * targetCount, height)
                     nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
                 end
@@ -309,12 +329,6 @@ local function updateNamePlates()
     end
 end
 
-local function clearNamePlates()
-    for _, f in pairs(nameplateFrames) do
-        f:Hide()
-    end
-end
-
 local function startTicker()
     if updateTicker then
         updateTicker:Cancel()
@@ -322,6 +336,9 @@ local function startTicker()
     updateTicker = C_Timer.NewTicker(0.1, updateNamePlates)
 end
 
+--------------------------------------------------------------------------------
+-- UI Setup
+--------------------------------------------------------------------------------
 local function addTooltip(frame, text)
     frame:SetScript("OnEnter", function()
         GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
@@ -648,19 +665,22 @@ function initializeUI()
     UIDropDownMenu_Initialize(borderStyleDropdown, InitializeBorderStyleDropdown)
     lastControlLeft = borderStyleDropdown
 
+    ----------------------------------------------------------------------------
     -- Right Column: Game Mode Toggles
+    ----------------------------------------------------------------------------
     local toggleOptionsTitle = rightColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     toggleOptionsTitle:SetPoint("TOPLEFT", 0, 0)
     toggleOptionsTitle:SetText("Game Mode Toggles")
 
     local lastControlRight = toggleOptionsTitle
     local checkboxData = {
-        { label = "Enable in Open World", setting = "enableInOpenWorld" },
-        { label = "Enable in Arena", setting = "enableInArena" },
+        { label = "Enable in Open World",   setting = "enableInOpenWorld" },
+        { label = "Enable in Arena",        setting = "enableInArena" },
+        { label = "Enable in Solo Shuffle", setting = "enableInSoloShuffle" }, -- <--- NEW
         { label = "Enable in Battleground", setting = "enableInBattleground" },
-        { label = "Enable in Raid", setting = "enableInRaid" },
-        { label = "Enable in Dungeons", setting = "enableInDungeon" },
-        { label = "Enable in Delves", setting = "enableInDelves" },
+        { label = "Enable in Raid",         setting = "enableInRaid" },
+        { label = "Enable in Dungeons",     setting = "enableInDungeon" },
+        { label = "Enable in Delves",       setting = "enableInDelves" },
     }
 
     for i, data in ipairs(checkboxData) do
@@ -679,7 +699,9 @@ function initializeUI()
         lastControlRight = checkbox
     end
 
+    ----------------------------------------------------------------------------
     -- Position & Sizing
+    ----------------------------------------------------------------------------
     local positionTitle = rightColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     positionTitle:SetPoint("TOPLEFT", lastControlRight, "BOTTOMLEFT", 0, sectionSpacing - 5)
     positionTitle:SetText("Position & Sizing")
@@ -868,12 +890,14 @@ function initializeUI()
         self:Show()
         addon.ApplyOverlayAppearanceChanges()
     end)
-
     optionsFrame:SetScript("OnHide", function(self)
         self:Hide()
     end)
 end
 
+--------------------------------------------------------------------------------
+-- Event Handling
+--------------------------------------------------------------------------------
 local function OnEvent(self, event, ...)
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         initializePlayers()
