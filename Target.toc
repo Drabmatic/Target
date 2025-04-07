@@ -5,5 +5,5 @@
 ## Version: 8.345
 ## SavedVariables: Target_Settings, Target_Profiles, Target_CurrentProfile
 
-Target.lua
 Overlay.lua
+Target.lua
