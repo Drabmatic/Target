@@ -1,4 +1,3 @@
--- Target.lua
 local addonName, addon = ...
 
 local borderStyles = {
@@ -19,7 +18,7 @@ local defaultSettings = {
     iconOpacity = 1.0,
     enableInOpenWorld = true,
     enableInArena = true,
-    enableInSoloShuffle = true,     -- <--- NEW
+    enableInSoloShuffle = true,
     enableInBattleground = true,
     enableInRaid = true,
     enableInDungeon = true,
@@ -28,6 +27,8 @@ local defaultSettings = {
     layout = "Horizontal",
     overlayLayout = "Horizontal",
     overlayBorderStyle = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    compactOverlay = false,  -- New: Compact overlay mode
+    enableGlow = true,       -- New: Toggle for glow effect
 }
 
 local profiles = {
@@ -35,23 +36,15 @@ local profiles = {
 }
 local currentProfile = "Default"
 
---------------------------------------------------------------------------------
--- 1) Icon types: existing + Minimalistic, HD, and Cartoon
---------------------------------------------------------------------------------
 local iconTypes = {
     ["Default"] = { suffix = "",        useClassColor = false },
     ["Circle"]  = { suffix = "-circle", useClassColor = false },
     ["Class Color"] = { suffix = "-color", useClassColor = true },
-
-    -- Additional icon styles
     ["Minimalistic"] = { styleKey = "Min" },
     ["HD"]           = { styleKey = "HD" },
     ["Cartoon"]      = { styleKey = "Cartoon" },
 }
 
---------------------------------------------------------------------------------
--- 2) Class-to-file lookup for Min, HD, and Cartoon
---------------------------------------------------------------------------------
 local classToFilenames = {
     deathknight = {
         Min = "Death Knight-Min.tga",
@@ -138,9 +131,6 @@ local players = {}
 local nameplateFrames = {}
 local updateTicker
 
---------------------------------------------------------------------------------
--- Save / Profile Management
---------------------------------------------------------------------------------
 local function SaveProfileSettings()
     Target_Profiles[currentProfile] = CopyTable(Target_Settings)
     Target_CurrentProfile = currentProfile
@@ -167,9 +157,6 @@ local function deleteProfile(profileName)
     end
 end
 
---------------------------------------------------------------------------------
--- createPlayer() - set the icon texture
---------------------------------------------------------------------------------
 local function createPlayer(unitId)
     local player = players[unitId] or {}
     players[unitId] = player
@@ -183,15 +170,9 @@ local function createPlayer(unitId)
     end
 
     local iconType = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
-
-    -- Fallback if no styleKey
     local classImage = player.class .. (iconType.suffix or "") .. ".tga"
 
-    -- If we have a styleKey (Min, HD, Cartoon) for this class
-    if iconType.styleKey
-       and classToFilenames[player.class]
-       and classToFilenames[player.class][iconType.styleKey]
-    then
+    if iconType.styleKey and classToFilenames[player.class] and classToFilenames[player.class][iconType.styleKey] then
         classImage = classToFilenames[player.class][iconType.styleKey]
     end
 
@@ -219,12 +200,8 @@ local function initializePlayers()
     end
 end
 
---------------------------------------------------------------------------------
--- isAddonEnabled() - now includes Solo Shuffle check
---------------------------------------------------------------------------------
 local function isAddonEnabled()
     local inInstance, zoneType = IsInInstance()
-    -- If we’re in an arena, check if Solo Shuffle is active:
     if zoneType == "arena" and C_PvP.IsSoloShuffle and C_PvP.IsSoloShuffle() then
         return Target_Settings.enableInSoloShuffle
     end
@@ -240,9 +217,6 @@ local function isAddonEnabled()
     return zoneChecks[zoneType] or false
 end
 
---------------------------------------------------------------------------------
--- updateNamePlates
---------------------------------------------------------------------------------
 local function getTargetCount(unitGuid)
     local count = 0
     for _, player in pairs(players) do
@@ -299,7 +273,6 @@ local function updateNamePlates()
                     nameplateFrame:SetSize(width * columns, height * rows)
                     nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
                 else
-                    -- Fallback to horizontal
                     nameplateFrame:SetSize(width * targetCount, height)
                     nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
                 end
@@ -336,9 +309,6 @@ local function startTicker()
     updateTicker = C_Timer.NewTicker(0.1, updateNamePlates)
 end
 
---------------------------------------------------------------------------------
--- UI Setup
---------------------------------------------------------------------------------
 local function addTooltip(frame, text)
     frame:SetScript("OnEnter", function()
         GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
@@ -472,14 +442,9 @@ function initializeUI()
             if player.texture then
                 local it = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
                 local classImage = player.class .. (it.suffix or "") .. ".tga"
-
-                if it.styleKey
-                   and classToFilenames[player.class]
-                   and classToFilenames[player.class][it.styleKey]
-                then
+                if it.styleKey and classToFilenames[player.class] and classToFilenames[player.class][it.styleKey] then
                     classImage = classToFilenames[player.class][it.styleKey]
                 end
-
                 player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
             end
         end
@@ -576,6 +541,39 @@ function initializeUI()
     addTooltip(overlayCheckbox, "Toggle the arena overlay rating display.")
     lastControlLeft = overlayCheckbox
 
+    local compactOverlayCheckbox = CreateFrame("CheckButton", "TargetCompactOverlayCheckbox", leftColumn, "UICheckButtonTemplate")
+    compactOverlayCheckbox:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, verticalSpacing)
+    compactOverlayCheckbox.text = compactOverlayCheckbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    compactOverlayCheckbox.text:SetPoint("LEFT", compactOverlayCheckbox, "RIGHT", 0, 1)
+    compactOverlayCheckbox.text:SetText("Compact Overlay")
+    compactOverlayCheckbox:SetChecked(Target_Settings.compactOverlay)
+    compactOverlayCheckbox:SetScript("OnClick", function(self)
+        Target_Settings.compactOverlay = self:GetChecked()
+        if TargetOverlayFrame then
+            TargetOverlayFrame:Hide()
+            TargetOverlayFrame = nil
+            addon.ClearOverlayFrameReference()
+            addon.createOverlayFrame()
+        end
+        SaveProfileSettings()
+    end)
+    addTooltip(compactOverlayCheckbox, "Use a more compact version of the overlay.")
+    lastControlLeft = compactOverlayCheckbox
+
+    local glowCheckbox = CreateFrame("CheckButton", "TargetEnableGlowCheckbox", leftColumn, "UICheckButtonTemplate")
+    glowCheckbox:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, verticalSpacing)
+    glowCheckbox.text = glowCheckbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    glowCheckbox.text:SetPoint("LEFT", glowCheckbox, "RIGHT", 0, 1)
+    glowCheckbox.text:SetText("Enable Button Glow")
+    glowCheckbox:SetChecked(Target_Settings.enableGlow)
+    glowCheckbox:SetScript("OnClick", function(self)
+        Target_Settings.enableGlow = self:GetChecked()
+        addon.UpdateButtonMacros()  -- Updated to use addon scope
+        SaveProfileSettings()
+    end)
+    addTooltip(glowCheckbox, "Toggle the glow effect on overlay buttons.")
+    lastControlLeft = glowCheckbox
+
     local overlayLayoutLabel = leftColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     overlayLayoutLabel:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 15, verticalSpacing)
     overlayLayoutLabel:SetText("Arena Overlay Layout")
@@ -627,7 +625,6 @@ function initializeUI()
         UIDropDownMenu_SetSelectedID(borderStyleDropdown, self:GetID())
         Target_Settings.overlayBorderStyle = self.value
         SaveProfileSettings()
-
         if TargetOverlayFrame then
             if TargetOverlayFrame:IsShown() then
                 local point, relativeTo, relativePoint, x, y = TargetOverlayFrame:GetPoint()
@@ -637,7 +634,6 @@ function initializeUI()
                 Target_Settings.overlayHeight = TargetOverlayFrame:GetHeight()
             end
             SaveProfileSettings()
-
             TargetOverlayFrame:Hide()
             TargetOverlayFrame = nil
             addon.ClearOverlayFrameReference()
@@ -665,9 +661,7 @@ function initializeUI()
     UIDropDownMenu_Initialize(borderStyleDropdown, InitializeBorderStyleDropdown)
     lastControlLeft = borderStyleDropdown
 
-    ----------------------------------------------------------------------------
     -- Right Column: Game Mode Toggles
-    ----------------------------------------------------------------------------
     local toggleOptionsTitle = rightColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     toggleOptionsTitle:SetPoint("TOPLEFT", 0, 0)
     toggleOptionsTitle:SetText("Game Mode Toggles")
@@ -676,7 +670,7 @@ function initializeUI()
     local checkboxData = {
         { label = "Enable in Open World",   setting = "enableInOpenWorld" },
         { label = "Enable in Arena",        setting = "enableInArena" },
-        { label = "Enable in Solo Shuffle", setting = "enableInSoloShuffle" }, -- <--- NEW
+        { label = "Enable in Solo Shuffle", setting = "enableInSoloShuffle" },
         { label = "Enable in Battleground", setting = "enableInBattleground" },
         { label = "Enable in Raid",         setting = "enableInRaid" },
         { label = "Enable in Dungeons",     setting = "enableInDungeon" },
@@ -699,9 +693,7 @@ function initializeUI()
         lastControlRight = checkbox
     end
 
-    ----------------------------------------------------------------------------
     -- Position & Sizing
-    ----------------------------------------------------------------------------
     local positionTitle = rightColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     positionTitle:SetPoint("TOPLEFT", lastControlRight, "BOTTOMLEFT", 0, sectionSpacing - 5)
     positionTitle:SetText("Position & Sizing")
@@ -855,22 +847,14 @@ function initializeUI()
         editBox:SetText("https://paypal.me/Drabio?country.x=US&locale.x=en_US")
         editBox:HighlightText()
         editBox:SetCursorPosition(0)
-        editBox:SetScript("OnEscapePressed", function(self)
-            self:ClearFocus()
-        end)
+        editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
         editBox:SetScript("OnTextChanged", function(self)
             self:SetText("https://paypal.me/Drabio?country.x=US&locale.x=en_US")
             self:HighlightText()
         end)
-        editBox:SetScript("OnEditFocusGained", function(self)
-            self:HighlightText()
-        end)
-        editBox:SetScript("OnMouseUp", function(self)
-            self:HighlightText()
-        end)
-        editBox:SetScript("OnEditFocusLost", function(self)
-            self:HighlightText(0, 0)
-        end)
+        editBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+        editBox:SetScript("OnMouseUp", function(self) self:HighlightText() end)
+        editBox:SetScript("OnEditFocusLost", function(self) self:HighlightText(0, 0) end)
         editBox:EnableMouse(true)
         editBox:SetFocus()
 
@@ -890,14 +874,9 @@ function initializeUI()
         self:Show()
         addon.ApplyOverlayAppearanceChanges()
     end)
-    optionsFrame:SetScript("OnHide", function(self)
-        self:Hide()
-    end)
+    optionsFrame:SetScript("OnHide", function(self) self:Hide() end)
 end
 
---------------------------------------------------------------------------------
--- Event Handling
---------------------------------------------------------------------------------
 local function OnEvent(self, event, ...)
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         initializePlayers()
@@ -941,7 +920,6 @@ end
 
 frame:SetScript("OnEvent", OnEvent)
 
--- Slash command to open options
 SLASH_TARGETOPTIONS1 = "/targetoptions"
 SlashCmdList["TARGETOPTIONS"] = function()
     if not TargetOptionsFrame:IsShown() then
