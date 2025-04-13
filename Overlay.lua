@@ -11,6 +11,7 @@ local function SaveOverlaySettings()
         Target_Settings.overlayPosY = y
         Target_Settings.overlayWidth = overlayFrame:GetWidth()
         Target_Settings.overlayHeight = overlayFrame:GetHeight()
+        Target_Settings.overlayScale = overlayFrame:GetScale()
     end
 end
 
@@ -36,6 +37,8 @@ end
 -- Function to arrange arena buttons based on layout
 function addon.arrangeArenaButtons()
     if not overlayFrame or not overlayFrame:IsShown() then return end
+
+    overlayFrame:SetScale(Target_Settings.overlayScale or 1.0)
 
     local padding = Target_Settings.compactOverlay and 5 or 10
     local buttonWidth = Target_Settings.compactOverlay and 80 or 120
@@ -77,7 +80,6 @@ function addon.arrangeArenaButtons()
     end
 end
 
--- Updated to addon scope
 function addon.UpdateButtonMacros()
     if InCombatLockdown() or not C_AddOns.IsAddOnLoaded("Blizzard_PVPUI") then
         return
@@ -87,11 +89,11 @@ function addon.UpdateButtonMacros()
     local _, groupBracketIndex = GetGroupSizeBracket()
 
     local bracketButtons = {
-        [1] = "ConquestFrame.Arena2v2",        -- 2v2
-        [2] = "ConquestFrame.Arena3v3",        -- 3v3
-        [7] = "ConquestFrame.RatedSoloShuffle",-- Solo Shuffle
-        [4] = "ConquestFrame.RatedBG",         -- RBG
-        [9] = "ConquestFrame.BattleBlitz"      -- Battle Blitz
+        [1] = "ConquestFrame.Arena2v2",
+        [2] = "ConquestFrame.Arena3v3",
+        [7] = "ConquestFrame.RatedSoloShuffle",
+        [4] = "ConquestFrame.RatedBG",
+        [9] = "ConquestFrame.BattleBlitz"
     }
 
     for _, button in ipairs(addon.arenaButtons) do
@@ -172,8 +174,17 @@ function addon.createOverlayFrame()
     if overlayFrame then
         overlayFrame:Show()
         addon.arrangeArenaButtons()
-        addon.ApplyOverlayAppearanceChanges()
+        if addon.ApplyOverlayAppearanceChanges then
+            addon.ApplyOverlayAppearanceChanges()
+        end
         ConfigureSecureButtons()
+        -- Check if in arena and hide if necessary
+        if Target_Settings.hideOverlayInArena then
+            local inInstance, instanceType = IsInInstance()
+            if inInstance and instanceType == "arena" then
+                overlayFrame:Hide()
+            end
+        end
         return
     end
 
@@ -195,6 +206,7 @@ function addon.createOverlayFrame()
     overlayFrame = CreateFrame("Frame", "TargetOverlayFrame", UIParent, useBackdropTemplate and "BackdropTemplate" or nil)
     overlayFrame:SetSize(overlayWidth, overlayHeight)
     overlayFrame:SetPoint("CENTER", UIParent, "CENTER", posX, posY)
+    overlayFrame:SetScale(Target_Settings.overlayScale or 1.0)
 
     local backdrop = {
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Gold-Background",
@@ -359,7 +371,7 @@ function addon.createOverlayFrame()
             for _, button in ipairs(addon.arenaButtons) do
                 button:Disable()
             end
-        elseif event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
+        elseif event == "PLAYER_LOGIN" then
             C_Timer.After(1, function()
                 if not C_AddOns.IsAddOnLoaded("Blizzard_PVPUI") then
                     UIParentLoadAddOn("Blizzard_PVPUI")
@@ -367,17 +379,42 @@ function addon.createOverlayFrame()
                 addon.UpdateButtonMacros()
                 ConfigureSecureButtons()
             end)
+        elseif event == "PLAYER_ENTERING_WORLD" then
+            C_Timer.After(1, function()
+                if not C_AddOns.IsAddOnLoaded("Blizzard_PVPUI") then
+                    UIParentLoadAddOn("Blizzard_PVPUI")
+                end
+                addon.UpdateButtonMacros()
+                ConfigureSecureButtons()
+            end)
+            if Target_Settings.hideOverlayInArena then
+                local inInstance, instanceType = IsInInstance()
+                if inInstance and instanceType == "arena" then
+                    overlayFrame:Hide()
+                elseif Target_Settings.showOverlay then
+                    overlayFrame:Show()
+                end
+            end
         end
         updateRatings()
     end)
 
     overlayFrame:SetScript("OnShow", function()
-        addon.ApplyOverlayAppearanceChanges()
+        if addon.ApplyOverlayAppearanceChanges then
+            addon.ApplyOverlayAppearanceChanges()
+        end
         updateRatings()
         ConfigureSecureButtons()
         for _, button in ipairs(addon.arenaButtons) do
             if not InCombatLockdown() then
                 button:Enable()
+            end
+        end
+        -- Ensure overlay respects hideOverlayInArena setting
+        if Target_Settings.hideOverlayInArena then
+            local inInstance, instanceType = IsInInstance()
+            if inInstance and instanceType == "arena" then
+                overlayFrame:Hide()
             end
         end
     end)
@@ -390,7 +427,17 @@ function addon.createOverlayFrame()
 
     addon.arrangeArenaButtons()
     _G["TargetOverlayFrame"] = overlayFrame
-    overlayFrame:Show()
+    -- Only show if not in arena and hideOverlayInArena is enabled
+    if Target_Settings.hideOverlayInArena then
+        local inInstance, instanceType = IsInInstance()
+        if inInstance and instanceType == "arena" then
+            overlayFrame:Hide()
+        else
+            overlayFrame:Show()
+        end
+    else
+        overlayFrame:Show()
+    end
 end
 
 SLASH_TARGETRESET1 = "/targetreset"
@@ -400,12 +447,14 @@ SlashCmdList["TARGETRESET"] = function(msg)
         Target_Settings.overlayPosY = 0
         Target_Settings.overlayWidth = Target_Settings.compactOverlay and 450 or 650
         Target_Settings.overlayHeight = Target_Settings.compactOverlay and 30 or 38
+        Target_Settings.overlayScale = 1.0
 
-        print("ClassTarget: Overlay position and size have been reset to default.")
+        print("ClassTarget: Overlay position, size, and scale have been reset to default.")
 
         if overlayFrame and overlayFrame:IsShown() then
             overlayFrame:SetSize(Target_Settings.overlayWidth, Target_Settings.overlayHeight)
             overlayFrame:SetPoint("CENTER", UIParent, "CENTER", Target_Settings.overlayPosX, Target_Settings.overlayPosY)
+            overlayFrame:SetScale(Target_Settings.overlayScale)
             addon.arrangeArenaButtons()
         end
     else

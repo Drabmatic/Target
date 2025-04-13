@@ -27,8 +27,10 @@ local defaultSettings = {
     layout = "Horizontal",
     overlayLayout = "Horizontal",
     overlayBorderStyle = "Interface\\DialogFrame\\UI-DialogBox-Border",
-    compactOverlay = false,  -- New: Compact overlay mode
-    enableGlow = true,       -- New: Toggle for glow effect
+    compactOverlay = false,
+    enableGlow = true,
+    overlayScale = 1.0,
+    hideOverlayInArena = false,  -- New: Option to hide overlay in arena
 }
 
 local profiles = {
@@ -419,10 +421,11 @@ function initializeUI()
         addon.ApplyOverlayAppearanceChanges()
     end)
     addTooltip(deleteProfileButton, "Delete the currently selected profile.")
+    lastControlLeft = deleteProfileButton
 
     -- General Settings
     local generalSettingsTitle = leftColumn:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    generalSettingsTitle:SetPoint("TOPLEFT", createProfileButton, "BOTTOMLEFT", 0, sectionSpacing)
+    generalSettingsTitle:SetPoint("TOPLEFT", deleteProfileButton, "BOTTOMLEFT", 0, sectionSpacing)
     generalSettingsTitle:SetText("General Settings")
     lastControlLeft = generalSettingsTitle
 
@@ -560,6 +563,27 @@ function initializeUI()
     addTooltip(compactOverlayCheckbox, "Use a more compact version of the overlay.")
     lastControlLeft = compactOverlayCheckbox
 
+    local hideOverlayInArenaCheckbox = CreateFrame("CheckButton", "TargetHideOverlayInArenaCheckbox", leftColumn, "UICheckButtonTemplate")
+    hideOverlayInArenaCheckbox:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, verticalSpacing)
+    hideOverlayInArenaCheckbox.text = hideOverlayInArenaCheckbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    hideOverlayInArenaCheckbox.text:SetPoint("LEFT", hideOverlayInArenaCheckbox, "RIGHT", 0, 1)
+    hideOverlayInArenaCheckbox.text:SetText("Hide Overlay in Arena")
+    hideOverlayInArenaCheckbox:SetChecked(Target_Settings.hideOverlayInArena)
+    hideOverlayInArenaCheckbox:SetScript("OnClick", function(self)
+        Target_Settings.hideOverlayInArena = self:GetChecked()
+        if TargetOverlayFrame then
+            local inInstance, instanceType = IsInInstance()
+            if Target_Settings.hideOverlayInArena and inInstance and instanceType == "arena" then
+                TargetOverlayFrame:Hide()
+            elseif Target_Settings.showOverlay then
+                TargetOverlayFrame:Show()
+            end
+        end
+        SaveProfileSettings()
+    end)
+    addTooltip(hideOverlayInArenaCheckbox, "Hide the overlay when entering an arena and show it when leaving.")
+    lastControlLeft = hideOverlayInArenaCheckbox
+
     local glowCheckbox = CreateFrame("CheckButton", "TargetEnableGlowCheckbox", leftColumn, "UICheckButtonTemplate")
     glowCheckbox:SetPoint("TOPLEFT", lastControlLeft, "BOTTOMLEFT", 0, verticalSpacing)
     glowCheckbox.text = glowCheckbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -568,7 +592,7 @@ function initializeUI()
     glowCheckbox:SetChecked(Target_Settings.enableGlow)
     glowCheckbox:SetScript("OnClick", function(self)
         Target_Settings.enableGlow = self:GetChecked()
-        addon.UpdateButtonMacros()  -- Updated to use addon scope
+        addon.UpdateButtonMacros()
         SaveProfileSettings()
     end)
     addTooltip(glowCheckbox, "Toggle the glow effect on overlay buttons.")
@@ -808,6 +832,33 @@ function initializeUI()
         SaveProfileSettings()
     end)
 
+    local scaleSliderLabel = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    scaleSliderLabel:SetPoint("TOPLEFT", opacitySlider, "BOTTOMLEFT", 0, sectionSpacing)
+    scaleSliderLabel:SetText("Overlay Scale")
+
+    local scaleSlider = CreateFrame("Slider", "TargetScaleSlider", rightColumn, "OptionsSliderTemplate")
+    scaleSlider:SetPoint("TOPLEFT", scaleSliderLabel, "BOTTOMLEFT", 0, verticalSpacing)
+    scaleSlider:SetMinMaxValues(0.5, 2.0)
+    scaleSlider:SetValue(Target_Settings.overlayScale)
+    scaleSlider:SetValueStep(0.1)
+    scaleSlider:SetObeyStepOnDrag(true)
+    scaleSlider:SetWidth(200)
+    addTooltip(scaleSlider, "Adjust the overall scale of the arena overlay.")
+
+    local scaleSliderValue = rightColumn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    scaleSliderValue:SetPoint("LEFT", scaleSlider, "RIGHT", 10, 0)
+    scaleSliderValue:SetText(string.format("%.1f", Target_Settings.overlayScale))
+
+    scaleSlider:SetScript("OnValueChanged", function(self, value)
+        value = tonumber(string.format("%.1f", value))
+        scaleSliderValue:SetText(value)
+        Target_Settings.overlayScale = value
+        if TargetOverlayFrame then
+            TargetOverlayFrame:SetScale(value)
+        end
+        SaveProfileSettings()
+    end)
+
     local buttonContainer = CreateFrame("Frame", nil, optionsFrame)
     buttonContainer:SetSize(1, 1)
     buttonContainer:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 20)
@@ -878,11 +929,25 @@ function initializeUI()
 end
 
 local function OnEvent(self, event, ...)
-    if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
+    if event == "GROUP_ROSTER_UPDATE" then
         initializePlayers()
         clearNamePlates()
         updateNamePlates()
         startTicker()
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        initializePlayers()
+        clearNamePlates()
+        updateNamePlates()
+        startTicker()
+        -- Handle overlay visibility based on zone
+        if Target_Settings.showOverlay and TargetOverlayFrame then
+            local inInstance, instanceType = IsInInstance()
+            if Target_Settings.hideOverlayInArena and inInstance and instanceType == "arena" then
+                TargetOverlayFrame:Hide()
+            else
+                TargetOverlayFrame:Show()
+            end
+        end
     elseif event == "PLAYER_TARGET_CHANGED" then
         clearNamePlates()
         updateNamePlates()
@@ -901,6 +966,22 @@ local function OnEvent(self, event, ...)
         end
         if not Target_CurrentProfile then
             Target_CurrentProfile = "Default"
+        end
+
+        -- Ensure overlayScale and hideOverlayInArena exist in all profiles
+        for profileName, profile in pairs(Target_Profiles) do
+            if profile.overlayScale == nil then
+                profile.overlayScale = 1.0
+            end
+            if profile.hideOverlayInArena == nil then
+                profile.hideOverlayInArena = false
+            end
+        end
+        if Target_Settings.overlayScale == nil then
+            Target_Settings.overlayScale = 1.0
+        end
+        if Target_Settings.hideOverlayInArena == nil then
+            Target_Settings.hideOverlayInArena = false
         end
 
         profiles = Target_Profiles
