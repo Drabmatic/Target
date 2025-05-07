@@ -102,24 +102,25 @@ function addon.UpdateButtonMacros()
 
     for _, button in ipairs(addon.arenaButtons) do
         local bracketButton = bracketButtons[button.bracketIndex]
+        button:SetAttribute("type", "macro")
         if bracketButton then
-            button:SetAttribute("type", "macro")
             local macroText =
                 "/click LFDMicroButton\n" ..
                 "/click PVEFrameTab2\n" ..
                 "/click " .. RATED_CATEGORY_BUTTON .. "\n" ..
                 "/click " .. bracketButton .. "\n" ..
                 "/click " .. bracketButton .. "\n" ..
-                "/click ConquestJoinButton"
+                "/click ConquestJoinButton\n" ..
+                "/click LFDMicroButton"
             button:SetAttribute("macrotext", macroText)
             if Target_Settings.enableGlow and button.bracketIndex == groupBracketIndex then
                 ActionButton_ShowOverlayGlow(button)
             end
         else
-            button:SetAttribute("type", "macro")
             button:SetAttribute("macrotext",
                 "/click LFDMicroButton\n" ..
-                "/click PVEFrameTab2"
+                "/click PVEFrameTab2\n" ..
+                "/click LFDMicroButton"
             )
         end
     end
