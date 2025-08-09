@@ -1,4 +1,4 @@
-## Interface: 100207, 110000
+## Interface: 110107,110200
 ## Title: ClassTarget
 ## Notes: This addon shows target information on nameplates.
 ## Author: Drab
