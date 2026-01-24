@@ -159,13 +159,27 @@ local function deleteProfile(profileName)
     end
 end
 
+local function safeToString(v)
+    local ok, s = pcall(tostring, v)
+    if not ok then
+        return nil
+    end
+    if type(s) == "string" then
+        if s == "nil" or s == "" then
+            return nil
+        end
+        return s
+    end
+    return nil
+end
+
 local function createPlayer(unitId)
     local player = players[unitId] or {}
     players[unitId] = player
 
     player.unitId = unitId
     player.targetId = unitId .. "target"
-    player.guid = UnitGUID(unitId) or ""
+    player.guid = safeToString(UnitGUID(unitId)) or ""
     player.class = select(2, UnitClass(unitId)) or ""
     if player.class then
         player.class = player.class:lower()
@@ -218,11 +232,16 @@ local function isAddonEnabled()
     }
     return zoneChecks[zoneType] or false
 end
-
 local function getTargetCount(unitGuid)
+    local guidStr = safeToString(unitGuid)
+    if not guidStr then
+        return 0
+    end
+
     local count = 0
     for _, player in pairs(players) do
-        if unitGuid == UnitGUID(player.targetId) then
+        local targetGuidStr = safeToString(UnitGUID(player.targetId))
+        if targetGuidStr and guidStr == targetGuidStr then
             count = count + 1
         end
     end
@@ -252,53 +271,65 @@ local function updateNamePlates()
         if UnitExists(unitId) and UnitExists(player.targetId) then
             local nameplate = C_NamePlate.GetNamePlateForUnit(player.targetId)
             if nameplate and player.texture then
-                local targetGUID = UnitGUID(player.targetId)
-                local targetCount = getTargetCount(targetGUID)
-                local width, height = player.texture:GetSize()
-                local nameplateFrame = nameplateFrames[targetGUID]
+                -- Use the nameplate frame object as a stable key instead of GUIDs
+                local plate = nameplate
+                if plate then
+                    local targetCount = 0
+                    for _, other in pairs(players) do
+                        if UnitExists(other.unitId) and UnitExists(other.targetId) then
+                            local otherPlate = C_NamePlate.GetNamePlateForUnit(other.targetId)
+                            if otherPlate == plate then
+                                targetCount = targetCount + 1
+                            end
+                        end
+                    end
 
-                if not nameplateFrame then
-                    nameplateFrame = CreateFrame("Frame", nil, nameplate)
-                    nameplateFrames[targetGUID] = nameplateFrame
+                    local width, height = player.texture:GetSize()
+                    local nameplateFrame = nameplateFrames[plate]
+
+                    if not nameplateFrame then
+                        nameplateFrame = CreateFrame("Frame", nil, plate)
+                        nameplateFrames[plate] = nameplateFrame
+                    end
+                    nameplateFrame:ClearAllPoints()
+
+                    if layout == "Horizontal" then
+                        nameplateFrame:SetSize(width * targetCount, height)
+                        nameplateFrame:SetPoint("TOP", plate, "BOTTOM", xOffset, yOffset)
+                    elseif layout == "Vertical" then
+                        nameplateFrame:SetSize(width, height * targetCount)
+                        nameplateFrame:SetPoint("TOP", plate, "BOTTOM", xOffset, yOffset)
+                    elseif layout == "Grid" then
+                        local columns = math.ceil(math.sqrt(targetCount))
+                        local rows = math.ceil(targetCount / columns)
+                        nameplateFrame:SetSize(width * columns, height * rows)
+                        nameplateFrame:SetPoint("TOP", plate, "BOTTOM", xOffset, yOffset)
+                    else
+                        nameplateFrame:SetSize(width * targetCount, height)
+                        nameplateFrame:SetPoint("TOP", plate, "BOTTOM", xOffset, yOffset)
+                    end
+
+                    nameplateFrame:Show()
+
+                    if not currentCounts[plate] then
+                        currentCounts[plate] = 0
+                    end
+                    currentCounts[plate] = currentCounts[plate] + 1
+
+                    player.texture:SetParent(nameplateFrame)
+
+                    if layout == "Horizontal" then
+                        player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", (currentCounts[plate] - 1) * width, 0)
+                    elseif layout == "Vertical" then
+                        player.texture:SetPoint("TOP", nameplateFrame, "TOP", 0, -(currentCounts[plate] - 1) * height)
+                    elseif layout == "Grid" then
+                        local col = (currentCounts[plate] - 1) % math.ceil(math.sqrt(targetCount))
+                        local row = math.floor((currentCounts[plate] - 1) / math.ceil(math.sqrt(targetCount)))
+                        player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", col * width, -row * height)
+                    end
+
+                    player.texture:Show()
                 end
-                nameplateFrame:ClearAllPoints()
-
-                if layout == "Horizontal" then
-                    nameplateFrame:SetSize(width * targetCount, height)
-                    nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
-                elseif layout == "Vertical" then
-                    nameplateFrame:SetSize(width, height * targetCount)
-                    nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
-                elseif layout == "Grid" then
-                    local columns = math.ceil(math.sqrt(targetCount))
-                    local rows = math.ceil(targetCount / columns)
-                    nameplateFrame:SetSize(width * columns, height * rows)
-                    nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
-                else
-                    nameplateFrame:SetSize(width * targetCount, height)
-                    nameplateFrame:SetPoint("TOP", nameplate, "BOTTOM", xOffset, yOffset)
-                end
-
-                nameplateFrame:Show()
-
-                if not currentCounts[targetGUID] then
-                    currentCounts[targetGUID] = 0
-                end
-                currentCounts[targetGUID] = currentCounts[targetGUID] + 1
-
-                player.texture:SetParent(nameplateFrame)
-
-                if layout == "Horizontal" then
-                    player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", (currentCounts[targetGUID] - 1) * width, 0)
-                elseif layout == "Vertical" then
-                    player.texture:SetPoint("TOP", nameplateFrame, "TOP", 0, -(currentCounts[targetGUID] - 1) * height)
-                elseif layout == "Grid" then
-                    local col = (currentCounts[targetGUID] - 1) % math.ceil(math.sqrt(targetCount))
-                    local row = math.floor((currentCounts[targetGUID] - 1) / math.ceil(math.sqrt(targetCount)))
-                    player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", col * width, -row * height)
-                end
-
-                player.texture:Show()
             end
         end
     end
