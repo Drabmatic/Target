@@ -4,6 +4,33 @@ local overlayFrame
 addon.arenaButtons = {}
 
 -- Function to save overlay settings
+-- Compatibility shim: some prepatch builds removed ActionButton_* overlay functions.
+-- Provide safe fallbacks to avoid nil global calls and give a simple visual hint.
+if not ActionButton_ShowOverlayGlow then
+    function ActionButton_ShowOverlayGlow(btn)
+        if not btn or not btn.CreateTexture then return end
+        if btn._ctOverlayGlow then
+            btn._ctOverlayGlow:Show()
+            return
+        end
+        local glow = btn:CreateTexture(nil, "OVERLAY")
+        glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+        glow:SetAllPoints(btn)
+        glow:SetBlendMode("ADD")
+        glow:SetAlpha(0.8)
+        btn._ctOverlayGlow = glow
+    end
+end
+
+if not ActionButton_HideOverlayGlow then
+    function ActionButton_HideOverlayGlow(btn)
+        if not btn then return end
+        if btn._ctOverlayGlow then
+            btn._ctOverlayGlow:Hide()
+        end
+    end
+end
+
 local function SaveOverlaySettings()
     if Target_Settings and overlayFrame then
         local point, relativeTo, relativePoint, x, y = overlayFrame:GetPoint()
