@@ -205,6 +205,13 @@ local function createPlayer(unitId)
 end
 
 local function clearPlayers()
+    for _, player in pairs(players) do
+        if player.texture then
+            player.texture:ClearAllPoints()
+            player.texture:Hide()
+            player.texture:SetParent(UIParent)
+        end
+    end
     wipe(players)
 end
 
@@ -251,6 +258,12 @@ end
 local function clearNamePlates()
     for _, f in pairs(nameplateFrames) do
         f:Hide()
+    end
+    for _, player in pairs(players) do
+        if player.texture then
+            player.texture:ClearAllPoints()
+            player.texture:Hide()
+        end
     end
 end
 
