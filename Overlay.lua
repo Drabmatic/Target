@@ -3,33 +3,28 @@ local addonName, addon = ...
 local overlayFrame
 addon.arenaButtons = {}
 
--- Function to save overlay settings
--- Compatibility shim: some prepatch builds removed ActionButton_* overlay functions.
--- Provide safe fallbacks to avoid nil global calls and give a simple visual hint.
-if not ActionButton_ShowOverlayGlow then
-    function ActionButton_ShowOverlayGlow(btn)
-        if not btn or not btn.CreateTexture then return end
-        if btn._ctOverlayGlow then
-            btn._ctOverlayGlow:Show()
-            return
-        end
-        local glow = btn:CreateTexture(nil, "OVERLAY")
-        glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-        glow:SetAllPoints(btn)
-        glow:SetBlendMode("ADD")
-        glow:SetAlpha(0.8)
-        btn._ctOverlayGlow = glow
+local function ShowTargetOverlayGlow(btn)
+    if not btn or not btn.CreateTexture then return end
+    if btn._ctOverlayGlow then
+        btn._ctOverlayGlow:Show()
+        return
+    end
+
+    local glow = btn:CreateTexture(nil, "OVERLAY")
+    glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+    glow:SetAllPoints(btn)
+    glow:SetBlendMode("ADD")
+    glow:SetAlpha(0.8)
+    btn._ctOverlayGlow = glow
+end
+
+local function HideTargetOverlayGlow(btn)
+    if btn and btn._ctOverlayGlow then
+        btn._ctOverlayGlow:Hide()
     end
 end
 
-if not ActionButton_HideOverlayGlow then
-    function ActionButton_HideOverlayGlow(btn)
-        if not btn then return end
-        if btn._ctOverlayGlow then
-            btn._ctOverlayGlow:Hide()
-        end
-    end
-end
+-- Function to save overlay settings
 
 local function SaveOverlaySettings()
     if Target_Settings and overlayFrame then
@@ -58,6 +53,41 @@ local function GetGroupSizeBracket()
         return "2v2", 1, "ConquestFrame.Arena2v2"
     else
         return "Solo Shuffle", 7, "ConquestFrame.RatedSoloShuffle"
+    end
+end
+
+local BRACKET_BUTTONS = {
+    [1] = { clickName = "ClassTargetArena2v2Button", fields = { "Arena2v2" } },
+    [2] = { clickName = "ClassTargetArena3v3Button", fields = { "Arena3v3" } },
+    [4] = { clickName = "ClassTargetRatedBGButton", fields = { "RatedBG" } },
+    [7] = { clickName = "ClassTargetSoloShuffleButton", fields = { "RatedSoloShuffle" } },
+    [9] = { clickName = "ClassTargetBattleBlitzButton", fields = { "RatedBGBlitz", "BattleBlitz" } },
+}
+
+local function GetConquestBracketButton(bracketIndex)
+    if not ConquestFrame then
+        return nil
+    end
+
+    local info = BRACKET_BUTTONS[bracketIndex]
+    if not info then
+        return nil
+    end
+
+    for _, field in ipairs(info.fields) do
+        local button = ConquestFrame[field]
+        if button then
+            return button
+        end
+    end
+end
+
+local function RegisterBracketClickAliases()
+    for bracketIndex, info in pairs(BRACKET_BUTTONS) do
+        local button = GetConquestBracketButton(bracketIndex)
+        if button then
+            _G[info.clickName] = button
+        end
     end
 end
 
@@ -114,41 +144,41 @@ function addon.UpdateButtonMacros()
 
     local RATED_CATEGORY_BUTTON = "PVPQueueFrameCategoryButton2"
     local _, groupBracketIndex = GetGroupSizeBracket()
-
-    local bracketButtons = {
-        [1] = "ConquestFrame.Arena2v2",
-        [2] = "ConquestFrame.Arena3v3",
-        [7] = "ConquestFrame.RatedSoloShuffle",
-        [4] = "ConquestFrame.RatedBG",
-        [9] = "ConquestFrame.BattleBlitz"
-    }
+    RegisterBracketClickAliases()
 
     for _, button in ipairs(addon.arenaButtons) do
-        ActionButton_HideOverlayGlow(button)
+        HideTargetOverlayGlow(button)
     end
 
     for _, button in ipairs(addon.arenaButtons) do
-        local bracketButton = bracketButtons[button.bracketIndex]
+        local bracketInfo = BRACKET_BUTTONS[button.bracketIndex]
+        local bracketButton = bracketInfo and _G[bracketInfo.clickName] and bracketInfo.clickName
         button:SetAttribute("type", "macro")
         if bracketButton then
-            local macroText =
-                "/click LFDMicroButton\n" ..
+            local selectAndQueueMacro =
                 "/click PVEFrameTab2\n" ..
                 "/click " .. RATED_CATEGORY_BUTTON .. "\n" ..
                 "/click " .. bracketButton .. "\n" ..
                 "/click " .. bracketButton .. "\n" ..
                 "/click ConquestJoinButton\n" ..
                 "/click LFDMicroButton"
+            local macroText =
+                "/click LFDMicroButton\n" ..
+                selectAndQueueMacro
+            button:SetAttribute("queueMacroWhenClosed", macroText)
+            button:SetAttribute("queueMacroWhenOpen", selectAndQueueMacro)
             button:SetAttribute("macrotext", macroText)
             if Target_Settings.enableGlow and button.bracketIndex == groupBracketIndex then
-                ActionButton_ShowOverlayGlow(button)
+                ShowTargetOverlayGlow(button)
             end
         else
-            button:SetAttribute("macrotext",
+            local fallbackMacro =
                 "/click LFDMicroButton\n" ..
                 "/click PVEFrameTab2\n" ..
                 "/click LFDMicroButton"
-            )
+            button:SetAttribute("queueMacroWhenClosed", fallbackMacro)
+            button:SetAttribute("queueMacroWhenOpen", "/click LFDMicroButton")
+            button:SetAttribute("macrotext", fallbackMacro)
         end
     end
 end
@@ -158,11 +188,21 @@ local function ConfigureSecureButtons()
         return
     end
     for _, button in ipairs(addon.arenaButtons) do
+        if PVEFrame then
+            button:SetFrameRef("PVEFrame", PVEFrame)
+        end
         if not button.isConfigured then
             SecureHandlerWrapScript(button, "OnClick", button, [[
                 if IsShiftKeyDown() then
                     self:SetAttribute("macrotext", "")
                     return
+                end
+
+                local PVEFrame = self:GetFrameRef("PVEFrame")
+                if PVEFrame and PVEFrame:IsVisible() then
+                    self:SetAttribute("macrotext", self:GetAttribute("queueMacroWhenOpen") or "")
+                else
+                    self:SetAttribute("macrotext", self:GetAttribute("queueMacroWhenClosed") or "")
                 end
             ]])
             button.isConfigured = true
@@ -330,7 +370,7 @@ function addon.createOverlayFrame()
 
         button:HookScript("OnEnter", function(self)
             if Target_Settings.enableGlow then
-                ActionButton_ShowOverlayGlow(self)
+                ShowTargetOverlayGlow(self)
             end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             local groupBracketName, groupBracketIndex = GetGroupSizeBracket()
@@ -345,7 +385,7 @@ function addon.createOverlayFrame()
         end)
         button:HookScript("OnLeave", function(self)
             if Target_Settings.enableGlow then
-                ActionButton_HideOverlayGlow(self)
+                HideTargetOverlayGlow(self)
             end
             GameTooltip:Hide()
         end)
@@ -519,7 +559,7 @@ overlayEventFrame:SetScript("OnEvent", function(self, event, ...)
 
         -- Print the instructional message once per session
         if not hasShownMessage then
-            print("|cFFFFD700ClassTarget:|r You will need to manually select the PvP bracket in the UI before clicking the overlay to queue the intended bracket.")
+            print("|cFFFFD700ClassTarget:|r PvP overlay buttons will select their bracket before queueing when the PvP UI is available.")
             hasShownMessage = true
         end
     elseif event == "PLAYER_LOGIN" then

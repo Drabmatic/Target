@@ -127,11 +127,45 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("PLAYER_TARGET_CHANGED")
-frame:RegisterUnitEvent("UNIT_TARGET", "player", "party1", "party2", "party3", "party4")
+frame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
+frame:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
 
 local players = {}
 local nameplateFrames = {}
 local updateTicker
+
+-- In rated arena/Solo Shuffle, identity APIs (UnitIsUnit/UnitGUID/GetNamePlateForUnit)
+-- against a teammate's target return restricted "secret" values, and UnitName on an
+-- ENEMY target is now secret on every frame (probe log 2026-06-20), so names can no
+-- longer bridge the gap in rated play. The primary arena matcher is now the
+-- FINGERPRINT tier (see unitFingerprint below): class/race/sex/honor level remain
+-- readable through teammate-target tokens even when identity is secret. The name
+-- cache below still serves open world / unrated content, where names stay readable
+-- but can flicker. The cache is invalidated the moment that teammate actually changes
+-- target (UNIT_TARGET), so we never show a stale icon for a target they no longer have.
+local targetNameCache = {}
+
+-- Persistent debug log (written to SavedVariables\Target.lua so it can be read
+-- off-game). Capped so it can't grow without bound. Toggle with /targetlog.
+local MAX_DEBUG_LINES = 500
+local debugLoggingEnabled = false
+
+local function debugLog(msg)
+    if not debugLoggingEnabled then return end
+    if type(Target_DebugLog) ~= "table" then Target_DebugLog = {} end
+    local stamp = date("%Y-%m-%d %H:%M:%S")
+    Target_DebugLog[#Target_DebugLog + 1] = stamp .. "  " .. tostring(msg)
+    -- Trim from the front when over the cap.
+    local overflow = #Target_DebugLog - MAX_DEBUG_LINES
+    if overflow > 0 then
+        for i = 1, #Target_DebugLog - overflow do
+            Target_DebugLog[i] = Target_DebugLog[i + overflow]
+        end
+        for i = #Target_DebugLog, #Target_DebugLog - overflow + 1, -1 do
+            Target_DebugLog[i] = nil
+        end
+    end
+end
 
 local function SaveProfileSettings()
     Target_Profiles[currentProfile] = CopyTable(Target_Settings)
@@ -159,37 +193,25 @@ local function deleteProfile(profileName)
     end
 end
 
-local function safeToString(v)
-    local ok, s = pcall(tostring, v)
-    if not ok then
+local function createPlayer(unitId)
+    if unitId ~= "player" and not UnitExists(unitId) then
         return nil
     end
-    if type(s) == "string" then
-        if s == "nil" or s == "" then
-            return nil
-        end
-        return s
-    end
-    return nil
-end
 
-local function createPlayer(unitId)
     local player = players[unitId] or {}
     players[unitId] = player
 
     player.unitId = unitId
     player.targetId = unitId .. "target"
-    player.guid = safeToString(UnitGUID(unitId)) or ""
-    player.class = select(2, UnitClass(unitId)) or ""
-    if player.class then
-        player.class = player.class:lower()
-    end
+    player.guid = unitId
+    player.classToken = select(2, UnitClass(unitId)) or ""
+    player.classKey = player.classToken ~= "" and player.classToken:lower() or ""
 
     local iconType = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
-    local classImage = player.class .. (iconType.suffix or "") .. ".tga"
+    local classImage = player.classToken .. (iconType.suffix or "") .. ".tga"
 
-    if iconType.styleKey and classToFilenames[player.class] and classToFilenames[player.class][iconType.styleKey] then
-        classImage = classToFilenames[player.class][iconType.styleKey]
+    if iconType.styleKey and player.classKey ~= "" and classToFilenames[player.classKey] and classToFilenames[player.classKey][iconType.styleKey] then
+        classImage = classToFilenames[player.classKey][iconType.styleKey]
     end
 
     if not player.texture then
@@ -197,7 +219,12 @@ local function createPlayer(unitId)
     end
     local iconSize = tonumber(Target_Settings.iconSize) or 32
 
-    player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
+    if player.classToken ~= "" then
+        player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
+    else
+        -- Hide non-player/unknown class units (e.g. follower dungeon companions)
+        player.texture:SetTexture(nil)
+    end
     player.texture:SetSize(iconSize, iconSize)
     player.texture:SetAlpha(Target_Settings.iconOpacity)
 
@@ -215,11 +242,50 @@ local function clearPlayers()
     wipe(players)
 end
 
+local function getTrackedUnitIds()
+    local unitIds = { "player" }
+
+    if IsInRaid() then
+        local numMembers = GetNumGroupMembers() or 0
+        for i = 1, numMembers do
+            local unitId = "raid" .. i
+            if UnitExists(unitId) and not UnitIsUnit(unitId, "player") then
+                unitIds[#unitIds + 1] = unitId
+            end
+        end
+    else
+        local numMembers = GetNumSubgroupMembers() or 0
+        for i = 1, numMembers do
+            local unitId = "party" .. i
+            if UnitExists(unitId) then
+                unitIds[#unitIds + 1] = unitId
+            end
+        end
+    end
+
+    return unitIds
+end
+
+local function registerTargetUnitEvents(unitIds)
+    frame:UnregisterEvent("UNIT_TARGET")
+    frame:RegisterUnitEvent("UNIT_TARGET", unpack(unitIds))
+end
+
 local function initializePlayers()
     clearPlayers()
-    players["player"] = createPlayer("player")
-    for i = 1, 4 do
-        players["party" .. i] = createPlayer("party" .. i)
+    wipe(targetNameCache)
+    local unitIds = getTrackedUnitIds()
+
+    for _, unitId in ipairs(unitIds) do
+        createPlayer(unitId)
+    end
+
+    registerTargetUnitEvents(unitIds)
+
+    if debugLoggingEnabled then
+        debugLog(("initializePlayers: inRaid=%s grp=%d subgrp=%d tracking={%s}"):format(
+            tostring(IsInRaid()), GetNumGroupMembers() or 0,
+            GetNumSubgroupMembers() or 0, table.concat(unitIds, ", ")))
     end
 end
 
@@ -235,26 +301,11 @@ local function isAddonEnabled()
         pvp = Target_Settings.enableInBattleground,
         raid = Target_Settings.enableInRaid,
         party = Target_Settings.enableInDungeon,
+        scenario = Target_Settings.enableInDungeon,
         delves = Target_Settings.enableInDelves
     }
     return zoneChecks[zoneType] or false
 end
-local function getTargetCount(unitGuid)
-    local guidStr = safeToString(unitGuid)
-    if not guidStr then
-        return 0
-    end
-
-    local count = 0
-    for _, player in pairs(players) do
-        local targetGuidStr = safeToString(UnitGUID(player.targetId))
-        if targetGuidStr and guidStr == targetGuidStr then
-            count = count + 1
-        end
-    end
-    return count
-end
-
 local function clearNamePlates()
     for _, f in pairs(nameplateFrames) do
         f:Hide()
@@ -267,8 +318,204 @@ local function clearNamePlates()
     end
 end
 
-local function updateNamePlates()
+-- Return a usable (non-forbidden) nameplate frame for a nameplate unit token.
+local function usablePlate(npUnit)
+    local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, npUnit)
+    if ok and plate and (not plate.IsForbidden or not plate:IsForbidden()) then
+        return plate
+    end
+    return nil
+end
+
+-- "Fingerprint" identity matching (technique proven by SweepyBoop in current rated
+-- arena): UnitIsUnit/UnitGUID/UnitName against enemy players return secrets in
+-- instanced PvP, but class, race, sex and honor level stay READABLE - even through
+-- indirect tokens like "party1target". Comparing that tuple is the only sanctioned
+-- way left to link a teammate's target to a nameplate.
+local function safeRead(fn, ...)
+    local ok, v = pcall(fn, ...)
+    if not ok then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    return v
+end
+
+-- Returns class, raceFile, sex, honorLevel (multiple values, no table -> no GC
+-- churn from the 10Hz ticker). Returns nil if even the class is unreadable.
+local function unitFingerprint(unit)
+    local class = safeRead(UnitClassBase, unit)
+    if not class then return nil end
+    local race
+    local ok, _, raceFile = pcall(UnitRace, unit) -- raceFile is locale-independent
+    if ok and raceFile and not (issecretvalue and issecretvalue(raceFile)) then
+        race = raceFile
+    end
+    return class, race, safeRead(UnitSex, unit), safeRead(UnitHonorLevel, unit)
+end
+
+-- Components can be nil (out of range / secret); only compare what both sides have.
+-- Class is mandatory. The caller additionally requires the match to be UNIQUE among
+-- visible nameplates, so partial prints can never mistag a lookalike.
+local function fingerprintsMatch(cA, rA, sA, hA, cB, rB, sB, hB)
+    if not cA or not cB or cA ~= cB then return false end
+    if rA and rB and rA ~= rB then return false end
+    if sA and sB and sA ~= sB then return false end
+    if hA and hB and hA ~= hB then return false end
+    return true
+end
+
+local function fingerprintString(class, race, sex, honor)
+    if not class then return "nil" end
+    return ("%s/%s/%s/%s"):format(class, tostring(race), tostring(sex), tostring(honor))
+end
+
+local function getNamePlateForTarget(targetUnitId)
+    if not targetUnitId then
+        return nil
+    end
+
+    -- Fast path for the player's own target.
+    if targetUnitId == "playertarget" then
+        local plate = usablePlate("target")
+        if plate then return plate end
+    end
+
+    if not UnitExists(targetUnitId) then
+        return nil
+    end
+
+    -- Direct lookup for tokens GetNamePlateForUnit accepts directly (e.g. "target").
+    local plate = usablePlate(targetUnitId)
+    if plate then return plate end
+
+    -- Match a group member's target to a visible nameplate, in order of reliability:
+    --   1. UnitIsUnit - exact; works in open world / dungeons.
+    --   2. GUID match - exact; also disambiguates duplicate names.
+    --   3. Fingerprint match (instanced PvP only) - class/race/sex/honor level stay
+    --      readable when identity APIs return secrets (probe log 2026-06-20 showed
+    --      UnitIsUnit vs arenaN silently returns FALSE and enemy names are ALWAYS
+    --      secret in rated arena, killing tiers 1-2 and 4 there). Only trusted when
+    --      exactly ONE visible nameplate matches the tuple.
+    --   4. Name match - last resort for unrated content. Only used when the name is
+    --      UNIQUE among nameplates, so we never tag the wrong same-named unit.
+    -- IMPORTANT: these APIs don't error on restricted units - they RETURN "secret"
+    -- values, and merely comparing (==) a secret raises a blocked-action Lua error.
+    -- pcall around the API call does NOT cover the later comparison, so every
+    -- secret must be detected with issecretvalue() and treated as unknown.
+    local issecret = issecretvalue or function() return false end
+    local okGUID, targetGUID = pcall(UnitGUID, targetUnitId)
+    if not okGUID or issecret(targetGUID) then targetGUID = nil end
+    local okName, liveName = pcall(UnitName, targetUnitId)
+    if not okName or issecret(liveName) then liveName = nil end
+
+    -- Fingerprint tier setup: only inside instanced PvP, where the exact tiers are
+    -- the ones that lie; anywhere else tiers 1-2 are exact and this could only
+    -- mistag a lookalike. Skip friendly targets (friendlies aren't secret, so if
+    -- identity was going to resolve at all, tiers 1-2 already did). Pets are fair
+    -- game: teammates DO target enemy pets (2026-07-01 log), and a pet's print
+    -- (race=nil, sex=1, honor=0) can't collide with any player's print because sex
+    -- is always 2/3 for players.
+    local tfClass, tfRace, tfSex, tfHonor
+    local targetIsPlayer
+    local _, zoneType = IsInInstance()
+    if zoneType == "arena" or zoneType == "pvp" then
+        local isFriend = safeRead(UnitIsFriend, "player", targetUnitId)
+        if isFriend ~= true then
+            targetIsPlayer = safeRead(UnitIsPlayer, targetUnitId)
+            tfClass, tfRace, tfSex, tfHonor = unitFingerprint(targetUnitId)
+        end
+    end
+
+    -- Name flickers to a secret on some frames in rated arena, and worse, the
+    -- restricted API sometimes returns a WRONG-but-readable name (e.g. the player's
+    -- own name) for a teammate's target. So we do NOT trust a live name blindly:
+    -- we only cache a name once it has been PROVEN to map to a real enemy nameplate
+    -- (done after the match loop below). During secret/garbage frames we bridge with
+    -- that proven cached name. Cache is cleared on UNIT_TARGET so it can never point
+    -- at a target the teammate has since switched away from.
+    local targetName = liveName or targetNameCache[targetUnitId]
+
+    local nameMatch, nameMatchCount = nil, 0
+    local fpMatch, fpMatchCount = nil, 0
+    for i = 1, 40 do
+        local npUnit = "nameplate" .. i
+        if UnitExists(npUnit) then
+            -- 1. identity
+            local okSame, same = pcall(UnitIsUnit, npUnit, targetUnitId)
+            if okSame and not issecret(same) and same then
+                local p = usablePlate(npUnit)
+                if p then return p end
+            end
+            -- 2. guid
+            if targetGUID then
+                local okG, npGUID = pcall(UnitGUID, npUnit)
+                if okG and not issecret(npGUID) and npGUID and npGUID == targetGUID then
+                    local p = usablePlate(npUnit)
+                    if p then return p end
+                end
+            end
+            -- 3. collect fingerprint candidates: hostile plates whose playerness
+            --    agrees with the target's (when both are readable), so a teammate
+            --    targeting a pet matches pet plates and never a player lookalike
+            if tfClass then
+                local plateIsPlayer = safeRead(UnitIsPlayer, npUnit)
+                local playernessOk = targetIsPlayer == nil or plateIsPlayer == nil
+                    or targetIsPlayer == plateIsPlayer
+                local reaction = safeRead(UnitReaction, "player", npUnit)
+                if playernessOk and (not reaction or reaction < 5)
+                    and fingerprintsMatch(tfClass, tfRace, tfSex, tfHonor, unitFingerprint(npUnit)) then
+                    fpMatchCount = fpMatchCount + 1
+                    fpMatch = npUnit
+                end
+            end
+            -- 4. collect unique-name candidates for the fallback
+            if targetName then
+                local okN, npName = pcall(UnitName, npUnit)
+                if okN and not issecret(npName) and npName and npName == targetName then
+                    nameMatchCount = nameMatchCount + 1
+                    nameMatch = npUnit
+                end
+            end
+        end
+    end
+
+    -- Unique fingerprint match: the arena/BG path. Two same-tuple enemies (mirror
+    -- comp with equal honor level) stay ambiguous and draw nothing - never wrong.
+    if fpMatchCount == 1 then
+        return usablePlate(fpMatch)
+    end
+
+    if nameMatchCount == 1 then
+        -- We matched a real, unique enemy nameplate by name. If this match came from
+        -- a freshly-read live name, remember it so we can bridge future secret frames.
+        -- (Only cache PROVEN names -> never poisons the cache with the player's own
+        -- name or other garbage the restricted API returns.)
+        if liveName then
+            targetNameCache[targetUnitId] = liveName
+        end
+        return usablePlate(nameMatch)
+    end
+
+    return nil
+end
+
+local updateNamePlates
+local updateNamePlatesPending = false
+
+local function scheduleUpdateNamePlates()
+    if updateNamePlatesPending then return end
+    updateNamePlatesPending = true
+    C_Timer.After(0, function()
+        updateNamePlatesPending = false
+        updateNamePlates()
+    end)
+end
+
+updateNamePlates = function()
     if not isAddonEnabled() then
+        if debugLoggingEnabled then
+            local _, zoneType = IsInInstance()
+            debugLog("addon DISABLED for this zone (instanceType=" .. tostring(zoneType) .. ")")
+        end
         for _, f in pairs(nameplateFrames) do
             f:Hide()
         end
@@ -280,69 +527,131 @@ local function updateNamePlates()
     local layout = Target_Settings.layout
     local xOffset, yOffset = Target_Settings.xValue, Target_Settings.yValue
 
-    for unitId, player in pairs(players) do
-        if UnitExists(unitId) and UnitExists(player.targetId) then
-            local nameplate = C_NamePlate.GetNamePlateForUnit(player.targetId)
-            if nameplate and player.texture then
-                -- Use the nameplate frame object as a stable key instead of GUIDs
-                local plate = nameplate
-                if plate then
-                    local targetCount = 0
-                    for _, other in pairs(players) do
-                        if UnitExists(other.unitId) and UnitExists(other.targetId) then
-                            local otherPlate = C_NamePlate.GetNamePlateForUnit(other.targetId)
-                            if otherPlate == plate then
-                                targetCount = targetCount + 1
-                            end
+    -- Resolve each tracked player's nameplate exactly ONCE per pass. The matcher is
+    -- non-deterministic frame-to-frame in rated arena (names flicker), so calling it
+    -- multiple times for the same player can disagree. Cache the result for this pass
+    -- so the match, the per-plate count, and the draw all use the same answer.
+    local resolved = {}
+    for _, player in pairs(players) do
+        if player.texture and player.classToken ~= "" then
+            resolved[player] = getNamePlateForTarget(player.targetId)
+        end
+    end
+
+    for _, player in pairs(players) do
+        -- Class may not have been available when the player was first created
+        -- (e.g. party member's data not yet loaded on zone-in). Without this,
+        -- a group member whose class was "" at init is skipped forever and
+        -- their target icon never appears. Re-resolve it here.
+        if player.classToken == "" and UnitExists(player.unitId) and (select(2, UnitClass(player.unitId)) or "") ~= "" then
+            createPlayer(player.unitId)
+        end
+        if player.texture and player.classToken ~= "" then
+            local nameplate = resolved[player]
+            if debugLoggingEnabled then
+                local issecret = issecretvalue or function() return false end
+                local function fmt(ok, v)
+                    if not ok then return "err" end
+                    if issecret(v) then return "SECRET" end
+                    if v == nil then return "nil" end
+                    return tostring(v)
+                end
+                local okExists, tExists = pcall(UnitExists, player.targetId)
+                local okName, tName = pcall(UnitName, player.targetId)
+                -- Count how many enemy nameplates are currently visible, so we can
+                -- tell "no nameplates at all" from "nameplate exists but unmatched".
+                local npCount = 0
+                for i = 1, 40 do
+                    if UnitExists("nameplate" .. i) then npCount = npCount + 1 end
+                end
+                -- PROBE: for teammate targets, dump the fingerprint of the target
+                -- token next to every visible nameplate's fingerprint, so the log
+                -- shows exactly why the fingerprint tier did or didn't match.
+                local probe = ""
+                if player.targetId ~= "playertarget" then
+                    probe = " fp=" .. fingerprintString(unitFingerprint(player.targetId))
+                    for i = 1, 40 do
+                        local npU = "nameplate" .. i
+                        if UnitExists(npU) then
+                            probe = probe .. (" np%d=%s"):format(i, fingerprintString(unitFingerprint(npU)))
                         end
                     end
-
-                    local width, height = player.texture:GetSize()
-                    local nameplateFrame = nameplateFrames[plate]
-
-                    if not nameplateFrame then
-                        nameplateFrame = CreateFrame("Frame", nil, plate)
-                        nameplateFrames[plate] = nameplateFrame
-                    end
-                    nameplateFrame:ClearAllPoints()
-
-                    if layout == "Horizontal" then
-                        nameplateFrame:SetSize(width * targetCount, height)
-                        nameplateFrame:SetPoint("TOP", plate, "BOTTOM", xOffset, yOffset)
-                    elseif layout == "Vertical" then
-                        nameplateFrame:SetSize(width, height * targetCount)
-                        nameplateFrame:SetPoint("TOP", plate, "BOTTOM", xOffset, yOffset)
-                    elseif layout == "Grid" then
-                        local columns = math.ceil(math.sqrt(targetCount))
-                        local rows = math.ceil(targetCount / columns)
-                        nameplateFrame:SetSize(width * columns, height * rows)
-                        nameplateFrame:SetPoint("TOP", plate, "BOTTOM", xOffset, yOffset)
-                    else
-                        nameplateFrame:SetSize(width * targetCount, height)
-                        nameplateFrame:SetPoint("TOP", plate, "BOTTOM", xOffset, yOffset)
-                    end
-
-                    nameplateFrame:Show()
-
-                    if not currentCounts[plate] then
-                        currentCounts[plate] = 0
-                    end
-                    currentCounts[plate] = currentCounts[plate] + 1
-
-                    player.texture:SetParent(nameplateFrame)
-
-                    if layout == "Horizontal" then
-                        player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", (currentCounts[plate] - 1) * width, 0)
-                    elseif layout == "Vertical" then
-                        player.texture:SetPoint("TOP", nameplateFrame, "TOP", 0, -(currentCounts[plate] - 1) * height)
-                    elseif layout == "Grid" then
-                        local col = (currentCounts[plate] - 1) % math.ceil(math.sqrt(targetCount))
-                        local row = math.floor((currentCounts[plate] - 1) / math.ceil(math.sqrt(targetCount)))
-                        player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", col * width, -row * height)
-                    end
-
-                    player.texture:Show()
                 end
+                local line = ("%s (%s) target=%s exists=%s name=%s nameplates=%d plate=%s%s"):format(
+                    player.unitId, player.classToken, player.targetId,
+                    fmt(okExists, tExists), fmt(okName, tName), npCount,
+                    nameplate and "FOUND" or "MISSING", probe)
+                -- Only record when this unit's line CHANGES, so the log stays readable
+                -- instead of 250 identical spam entries per second.
+                if player._lastLogLine ~= line then
+                    player._lastLogLine = line
+                    debugLog(line)
+                end
+            end
+            if nameplate then
+                -- Use the nameplate frame object as a stable key instead of GUIDs
+                local plate = nameplate
+                local targetCount = 0
+                for other, otherPlate in pairs(resolved) do
+                    if otherPlate == plate then
+                        targetCount = targetCount + 1
+                    end
+                end
+
+                local width, height = player.texture:GetSize()
+                local nameplateFrame = nameplateFrames[plate]
+
+                if not nameplateFrame then
+                    nameplateFrame = CreateFrame("Frame", nil, plate)
+                    -- SweepyBoop's proven recipe for plate-attached icons: in arena
+                    -- the plate base frame's effective alpha is driven to ~0 for
+                    -- units you aren't targeting (Blizzard fading + nameplate-
+                    -- replacement addons), which silently blanks any child that
+                    -- inherits it. IsShown() stays true - invisible by alpha only.
+                    nameplateFrame:SetMouseClickEnabled(false)
+                    nameplateFrame:SetAlpha(1)
+                    nameplateFrame:SetIgnoreParentAlpha(true)
+                    nameplateFrame:SetFrameStrata("HIGH")
+                    nameplateFrames[plate] = nameplateFrame
+                end
+                nameplateFrame:ClearAllPoints()
+
+                if layout == "Horizontal" then
+                    nameplateFrame:SetSize(width * targetCount, height)
+                    nameplateFrame:SetPoint("BOTTOM", plate, "TOP", xOffset, yOffset)
+                elseif layout == "Vertical" then
+                    nameplateFrame:SetSize(width, height * targetCount)
+                    nameplateFrame:SetPoint("BOTTOM", plate, "TOP", xOffset, yOffset)
+                elseif layout == "Grid" then
+                    local columns = math.ceil(math.sqrt(targetCount))
+                    local rows = math.ceil(targetCount / columns)
+                    nameplateFrame:SetSize(width * columns, height * rows)
+                    nameplateFrame:SetPoint("BOTTOM", plate, "TOP", xOffset, yOffset)
+                else
+                    nameplateFrame:SetSize(width * targetCount, height)
+                    nameplateFrame:SetPoint("BOTTOM", plate, "TOP", xOffset, yOffset)
+                end
+
+                nameplateFrame:Show()
+
+                if not currentCounts[plate] then
+                    currentCounts[plate] = 0
+                end
+                currentCounts[plate] = currentCounts[plate] + 1
+
+                player.texture:SetParent(nameplateFrame)
+
+                if layout == "Horizontal" then
+                    player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", (currentCounts[plate] - 1) * width, 0)
+                elseif layout == "Vertical" then
+                    player.texture:SetPoint("TOP", nameplateFrame, "TOP", 0, -(currentCounts[plate] - 1) * height)
+                elseif layout == "Grid" then
+                    local col = (currentCounts[plate] - 1) % math.ceil(math.sqrt(targetCount))
+                    local row = math.floor((currentCounts[plate] - 1) / math.ceil(math.sqrt(targetCount)))
+                    player.texture:SetPoint("LEFT", nameplateFrame, "LEFT", col * width, -row * height)
+                end
+
+                player.texture:Show()
             end
         end
     end
@@ -352,7 +661,7 @@ local function startTicker()
     if updateTicker then
         updateTicker:Cancel()
     end
-    updateTicker = C_Timer.NewTicker(0.1, updateNamePlates)
+    updateTicker = C_Timer.NewTicker(0.1, scheduleUpdateNamePlates)
 end
 
 local function addTooltip(frame, text)
@@ -412,7 +721,7 @@ function initializeUI()
         UIDropDownMenu_SetSelectedID(profileDropdown, self:GetID())
         currentProfile = self.value
         Target_Settings = CopyTable(profiles[currentProfile])
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         SaveProfileSettings()
         addon.ApplyOverlayAppearanceChanges()
     end
@@ -447,7 +756,7 @@ function initializeUI()
         currentProfile = newProfileName
         Target_Settings = profiles[currentProfile]
         UIDropDownMenu_Initialize(profileDropdown, InitializeProfileDropdown)
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         SaveProfileSettings()
         addon.ApplyOverlayAppearanceChanges()
     end)
@@ -461,7 +770,7 @@ function initializeUI()
     deleteProfileButton:SetScript("OnClick", function()
         deleteProfile(currentProfile)
         UIDropDownMenu_Initialize(profileDropdown, InitializeProfileDropdown)
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         addon.ApplyOverlayAppearanceChanges()
     end)
     addTooltip(deleteProfileButton, "Delete the currently selected profile.")
@@ -488,14 +797,18 @@ function initializeUI()
         for _, player in pairs(players) do
             if player.texture then
                 local it = iconTypes[Target_Settings.iconType] or iconTypes["Default"]
-                local classImage = player.class .. (it.suffix or "") .. ".tga"
-                if it.styleKey and classToFilenames[player.class] and classToFilenames[player.class][it.styleKey] then
-                    classImage = classToFilenames[player.class][it.styleKey]
+                local classImage = player.classToken .. (it.suffix or "") .. ".tga"
+                if it.styleKey and player.classKey ~= "" and classToFilenames[player.classKey] and classToFilenames[player.classKey][it.styleKey] then
+                    classImage = classToFilenames[player.classKey][it.styleKey]
                 end
-                player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
+                if player.classToken ~= "" then
+                    player.texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\" .. classImage)
+                else
+                    player.texture:SetTexture(nil)
+                end
             end
         end
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         SaveProfileSettings()
     end
 
@@ -531,7 +844,7 @@ function initializeUI()
     local function OnLayoutClick(self)
         UIDropDownMenu_SetSelectedID(layoutDropdown, self:GetID())
         Target_Settings.layout = self.value
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         SaveProfileSettings()
     end
 
@@ -754,7 +1067,7 @@ function initializeUI()
         checkbox:SetChecked(Target_Settings[data.setting])
         checkbox:SetScript("OnClick", function(self)
             Target_Settings[data.setting] = self:GetChecked()
-            updateNamePlates()
+            scheduleUpdateNamePlates()
             SaveProfileSettings()
         end)
         addTooltip(checkbox, "Enable or disable the addon in " .. data.label .. ".")
@@ -787,7 +1100,7 @@ function initializeUI()
         value = floor(value + 0.5)
         xSliderValue:SetText(value)
         Target_Settings.xValue = value
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         SaveProfileSettings()
     end)
 
@@ -812,7 +1125,7 @@ function initializeUI()
         value = floor(value + 0.5)
         ySliderValue:SetText(value)
         Target_Settings.yValue = value
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         SaveProfileSettings()
     end)
 
@@ -842,7 +1155,7 @@ function initializeUI()
                 player.texture:SetSize(value, value)
             end
         end
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         SaveProfileSettings()
     end)
 
@@ -872,7 +1185,7 @@ function initializeUI()
                 player.texture:SetAlpha(value)
             end
         end
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         SaveProfileSettings()
     end)
 
@@ -976,12 +1289,12 @@ local function OnEvent(self, event, ...)
     if event == "GROUP_ROSTER_UPDATE" then
         initializePlayers()
         clearNamePlates()
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         startTicker()
     elseif event == "PLAYER_ENTERING_WORLD" then
         initializePlayers()
         clearNamePlates()
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         startTicker()
         -- Handle overlay visibility based on zone
         if Target_Settings.showOverlay and TargetOverlayFrame then
@@ -993,14 +1306,23 @@ local function OnEvent(self, event, ...)
             end
         end
     elseif event == "PLAYER_TARGET_CHANGED" then
+        targetNameCache["playertarget"] = nil
         clearNamePlates()
-        updateNamePlates()
+        scheduleUpdateNamePlates()
     elseif event == "UNIT_TARGET" then
         local unit = ...
         if unit and players[unit] then
+            -- This teammate just changed target; drop the cached name for their
+            -- target token so we don't bridge to a target they no longer have.
+            targetNameCache[unit .. "target"] = nil
             clearNamePlates()
-            updateNamePlates()
+            scheduleUpdateNamePlates()
         end
+    elseif event == "NAME_PLATE_UNIT_ADDED" then
+        scheduleUpdateNamePlates()
+    elseif event == "NAME_PLATE_UNIT_REMOVED" then
+        clearNamePlates()
+        scheduleUpdateNamePlates()
     elseif event == "ADDON_LOADED" and ... == addonName then
         if not Target_Settings then
             Target_Settings = CopyTable(defaultSettings)
@@ -1038,7 +1360,7 @@ local function OnEvent(self, event, ...)
             Target_Settings = CopyTable(defaultSettings)
         end
         initializeUI()
-        updateNamePlates()
+        scheduleUpdateNamePlates()
         startTicker()
     end
 end
@@ -1052,6 +1374,75 @@ SlashCmdList["TARGETOPTIONS"] = function()
     else
         TargetOptionsFrame:Hide()
     end
+end
+
+DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffClassTarget|r v8.9 loaded. Type |cffffd100/targetlog|r to start logging.")
+
+SLASH_TARGETLOG1 = "/targetlog"
+SlashCmdList["TARGETLOG"] = function(arg)
+    local function p(msg) DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffClassTarget|r " .. msg) end
+    arg = (arg or ""):lower():gsub("%s+", "")
+    if arg == "clear" then
+        Target_DebugLog = {}
+        p("debug log cleared.")
+        return
+    end
+    debugLoggingEnabled = not debugLoggingEnabled
+    if debugLoggingEnabled then
+        if type(Target_DebugLog) ~= "table" then Target_DebugLog = {} end
+        debugLog("=== logging started ===")
+        p("|cff44ff44logging ON|r. Just play normally, then /reload. The results")
+        p("are saved in: WTF\\Account\\<name>\\SavedVariables\\Target.lua")
+        p("Use |cffffd100/targetlog|r again to stop, or |cffffd100/targetlog clear|r to wipe it.")
+    else
+        debugLog("=== logging stopped ===")
+        p("|cffff4444logging OFF|r. Type |cffffd100/reload|r to flush the file to disk.")
+    end
+end
+
+SLASH_TARGETDEBUG1 = "/targetdebug"
+SlashCmdList["TARGETDEBUG"] = function()
+    local function p(msg) DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffClassTarget|r " .. msg) end
+    -- pcall everything: in rated arena some unit queries can be "secret values".
+    local function exists(u) local ok, r = pcall(UnitExists, u); return ok and r and true or false end
+    local function uname(u) local ok, r = pcall(UnitName, u); return ok and r or "?" end
+
+    p(("inRaid=%s inGroup=%s grp=%d subgrp=%d enabled=%s"):format(
+        tostring(IsInRaid()), tostring(IsInGroup()),
+        GetNumGroupMembers() or 0, GetNumSubgroupMembers() or 0, tostring(isAddonEnabled())))
+
+    -- Which group-member token family yields a working "<unit>target"? This is the
+    -- crux: the addon picks party vs raid via IsInRaid(); we need to see which one
+    -- actually resolves teammates' targets in this instance.
+    for _, fam in ipairs({ {"party", 4}, {"raid", 5}, {"arena", 3} }) do
+        local prefix, count = fam[1], fam[2]
+        for i = 1, count do
+            local u = prefix .. i
+            if exists(u) then
+                local t = u .. "target"
+                p(("  %s=%s | %s exists=%s name=%s"):format(
+                    u, uname(u), t, tostring(exists(t)), exists(t) and uname(t) or "-"))
+            end
+        end
+    end
+
+    local cnt = 0
+    for i = 1, 40 do
+        local u = "nameplate" .. i
+        if exists(u) then cnt = cnt + 1; p(("  %s = %s"):format(u, uname(u))) end
+    end
+    p(("nameplates: %d"):format(cnt))
+
+    local n = 0
+    for _, player in pairs(players) do
+        n = n + 1
+        local t = player.targetId
+        local plate = getNamePlateForTarget(t)
+        p(("tracked %s class=%s | %s exists=%s name=%s plate=%s"):format(
+            player.unitId, player.classToken ~= "" and player.classToken or "(none)",
+            t, tostring(exists(t)), exists(t) and uname(t) or "-", plate and "YES" or "no"))
+    end
+    if n == 0 then p("no players tracked") end
 end
 
 _G[addonName] = addon

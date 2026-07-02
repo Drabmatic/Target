@@ -2,8 +2,8 @@
 ## Title: ClassTarget
 ## Notes: This addon shows target information on nameplates.
 ## Author: Drab
-## Version: 8.5
-## SavedVariables: Target_Settings, Target_Profiles, Target_CurrentProfile
+## Version: 8.9
+## SavedVariables: Target_Settings, Target_Profiles, Target_CurrentProfile, Target_DebugLog
 
 Overlay.lua
 Target.lua
